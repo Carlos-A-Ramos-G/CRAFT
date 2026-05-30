@@ -17,10 +17,17 @@ from .cap import get_resname
 _TEMPLATE = """\
 #!/bin/bash
 {sbatch_directives}
+# ── Paths (baked in at generation time) ──────────────────────────────────────
+PROJ_ROOT="{proj_root}"
+CRAFT_WD="{workdir}"
+
 # ── Environment ───────────────────────────────────────────────────────────────
 {module_lines}
-export GAUSS_SCRDIR=$(pwd)
+export GAUSS_SCRDIR="$CRAFT_WD"
 {conda_block}
+# Python scripts always run from the project root so config.yaml is found.
+cd "$PROJ_ROOT"
+
 # ── Phase 1: cap termini, generate Gaussian inputs and RESP files ─────────────
 echo "[$(date '+%H:%M:%S')] Phase 1 — run.py"
 python run.py
@@ -28,36 +35,38 @@ python run.py
 
 # ── Phase 2a: geometry optimisation ──────────────────────────────────────────
 echo "[$(date '+%H:%M:%S')] Phase 2a — geometry optimisation ({opt_com})"
-g16 < {opt_com} > {opt_log}
+g16 < "$CRAFT_WD/{opt_com}" > "$CRAFT_WD/{opt_log}"
 [ $? -ne 0 ] && echo "ERROR in Phase 2a (Gaussian opt)" && exit 1
 
 # ── Phase 2b: build HF/ESP input from optimised geometry ─────────────────────
 echo "[$(date '+%H:%M:%S')] Phase 2b — make_hf_input.py"
-python make_hf_input.py {opt_log}
+python make_hf_input.py "$CRAFT_WD/{opt_log}"
 [ $? -ne 0 ] && echo "ERROR in Phase 2b (make_hf_input)" && exit 1
 
 # ── Phase 2c: HF/6-31G(d) single-point for ESP/RESP ─────────────────────────
 echo "[$(date '+%H:%M:%S')] Phase 2c — HF single-point ({hf_com})"
-g16 < {hf_com} > {hf_log}
+g16 < "$CRAFT_WD/{hf_com}" > "$CRAFT_WD/{hf_log}"
 [ $? -ne 0 ] && echo "ERROR in Phase 2c (Gaussian HF)" && exit 1
 
 # ── Phase 3: AMBER parameterization ──────────────────────────────────────────
 echo "[$(date '+%H:%M:%S')] Phase 3 — amber_pipeline.py"
-python amber_pipeline.py {hf_log}
+python amber_pipeline.py "$CRAFT_WD/{hf_log}"
 [ $? -ne 0 ] && echo "ERROR in Phase 3 (AMBER pipeline)" && exit 1
 
-echo "[$(date '+%H:%M:%S')] Done."
+echo "[$(date '+%H:%M:%S')] Done. Output files in $CRAFT_WD"
 """
 
 
-def write_slurm(cfg, output):
+def write_slurm(cfg, output, proj_root, workdir):
     """
     Generate the SLURM batch script from config dict.
 
     Parameters
     ----------
-    cfg    : dict — full parsed config.yaml
-    output : str | Path — path of the generated script (e.g. 'KME3_craft.sh')
+    cfg       : dict       — full parsed config.yaml
+    output    : str | Path — path of the generated script (e.g. 'KME3/KME3_craft.sh')
+    proj_root : str | Path — absolute path to the project root (where run.py lives)
+    workdir   : str | Path — absolute path to the residue output directory (<resname>/)
     """
     res_cfg  = cfg.get('residue', {})
     g_opt    = cfg.get('gaussian_opt', {}) or {}
@@ -68,9 +77,9 @@ def write_slurm(cfg, output):
     resname   = get_resname(input_pdb) if input_pdb else Path(input_pdb or 'residue.pdb').stem
     job_name  = sl.get('job_name') or f"{resname}_craft"
 
-    opt_com  = g_opt.get('output_com') or f"{resname}_opt.com"
+    opt_com  = Path(g_opt.get('output_com') or f"{resname}_opt.com").name
+    hf_com   = Path(g_hf.get('output_com')  or f"{resname}_hf.com").name
     opt_log  = Path(opt_com).stem + '.log'
-    hf_com   = g_hf.get('output_com')  or f"{resname}_hf.com"
     hf_log   = Path(hf_com).stem  + '.log'
 
     # ── #SBATCH directives ────────────────────────────────────────────────────
@@ -105,13 +114,16 @@ def write_slurm(cfg, output):
         sbatch_directives='\n'.join(directives),
         module_lines=module_lines,
         conda_block=conda_block,
+        proj_root=str(proj_root),
+        workdir=str(workdir),
         opt_com=opt_com,
         opt_log=opt_log,
         hf_com=hf_com,
         hf_log=hf_log,
     )
 
-    Path(output).write_text(script)
+    output = Path(output)
+    output.write_text(script)
     print(f"SLURM script : {output}")
     print(f"  Residue    : {resname}")
     for d in directives:
@@ -121,4 +133,6 @@ def write_slurm(cfg, output):
     if conda_env:
         print(f"  conda env   : {conda_env}")
     print(f"  Workflow   : {opt_com} → {opt_log} → {hf_com} → {hf_log}")
-    print(f"\nSubmit with:  sbatch {output}")
+    print(f"\nTo submit:")
+    print(f"  cd {workdir}")
+    print(f"  sbatch {output.name}")

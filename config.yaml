@@ -1,17 +1,17 @@
 # Parameterization pipeline configuration
 #
-# Two ways to run:
+# Two ways to run (all outputs land in <resname>/, e.g. KME3/):
 #
 #   Manually (step-by-step):
-#     python run.py                           # Phase 1 — local
-#     sbatch KME3_opt.cmd                     # Phase 2a — HPC (geometry opt)
-#     python make_hf_input.py KME3_opt.log   # Phase 2b — local
-#     sbatch KME3_hf.cmd                      # Phase 2c — HPC (HF/ESP)
-#     python amber_pipeline.py KME3_hf.log   # Phase 3  — local
+#     python run.py                                    # Phase 1 — local; creates KME3/
+#     sbatch KME3/KME3_opt.com                         # Phase 2a — HPC (geometry opt)
+#     python make_hf_input.py KME3/KME3_opt.log       # Phase 2b — local
+#     sbatch KME3/KME3_hf.com                          # Phase 2c — HPC (HF/ESP)
+#     python amber_pipeline.py KME3/KME3_hf.log       # Phase 3  — local
 #
 #   Single SLURM job (full pipeline):
-#     python make_slurm.py                    # generates KME3_craft.sh
-#     sbatch KME3_craft.sh
+#     python make_slurm.py                    # generates KME3/KME3_craft.sh
+#     cd KME3 && sbatch KME3_craft.sh
 
 # ── Residue ───────────────────────────────────────────────────────────────────
 residue:
@@ -41,7 +41,7 @@ gaussian_hf:
 amber:
   atom_type: amber        # amber | gaff | gaff2  (passed to antechamber -at)
   ff14sb_frcmod: true     # also generate ff14SB frcmod (requires $AMBERHOME)
-  workdir:                # leave blank → current directory
+  workdir:                # leave blank → <resname>/ (derived from HF log path)
 
 # ── SLURM (used by make_slurm.py) ────────────────────────────────────────────
 slurm:

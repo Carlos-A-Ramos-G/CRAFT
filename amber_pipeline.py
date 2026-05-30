@@ -45,8 +45,9 @@ if __name__ == '__main__':
     amb_cfg  = cfg.get('amber', {}) or {}
     cap_cfg  = cfg.get('cap',   {}) or {}
 
-    charge     = args.charge  if args.charge  is not None else res_cfg.get('charge', 0)
-    workdir    = args.workdir if args.workdir != '.' else (amb_cfg.get('workdir') or '.')
+    charge  = args.charge if args.charge is not None else res_cfg.get('charge', 0)
+    workdir = (args.workdir if args.workdir != '.'
+               else (amb_cfg.get('workdir') or str(Path(args.log).resolve().parent)))
     capped_pdb = cap_cfg.get('output_pdb') or None   # None → auto-detect in run_amber_pipeline
 
     if args.resname:

@@ -83,30 +83,38 @@ The PDB can be a free amino acid (zwitterionic), a residue cut from a PDB chain 
 
 **2. Run the pipeline**
 
+Phase 1 creates a `<resname>/` subdirectory and writes all outputs there, keeping the project root clean.
+
 *Manual (step-by-step):*
 
 ```bash
-# Phase 1 — local
+# Phase 1 — local; creates <resname>/
 python run.py
 
 # Phase 2a — submit geometry optimisation to HPC
-sbatch <resname>_craft.sh   # or submit <resname>_opt.com manually
+#   Input:  <resname>/<resname>_opt.com
+#   Output: <resname>/<resname>_opt.log  (copy back from HPC)
 
 # Phase 2b — local, after opt log arrives
-python make_hf_input.py <resname>_opt.log
+python make_hf_input.py <resname>/<resname>_opt.log
 
 # Phase 2c — submit HF/ESP single-point to HPC
+#   Input:  <resname>/<resname>_hf.com
+#   Output: <resname>/<resname>_hf.log  (copy back from HPC)
 
 # Phase 3 — local, after HF log arrives
-python amber_pipeline.py <resname>_hf.log
+python amber_pipeline.py <resname>/<resname>_hf.log
 ```
 
 *Automated (single SLURM job):*
 
 ```bash
-python make_slurm.py          # generates <resname>_craft.sh
-sbatch <resname>_craft.sh     # runs all phases end-to-end on HPC
+python make_slurm.py     # generates <resname>/<resname>_craft.sh
+cd <resname>
+sbatch <resname>_craft.sh
 ```
+
+The SLURM script has absolute paths baked in at generation time, so it can be submitted from any directory and runs correctly regardless of where SLURM sets the working directory.
 
 ---
 
@@ -149,7 +157,7 @@ gaussian_hf:
 amber:
   atom_type: amber            # amber | gaff | gaff2
   ff14sb_frcmod: true         # generate ff14SB frcmod (requires $AMBERHOME)
-  workdir:                    # leave blank → current directory
+  workdir:                    # leave blank → <resname>/ (derived from HF log path)
 
 slurm:
   job_name:                   # leave blank → <base>_craft

@@ -51,13 +51,14 @@ if __name__ == '__main__':
     mem    = args.mem    if args.mem    is not None else g_cfg.get('mem', MEM_DEFAULT)
 
     log_path = Path(args.log)
+    workdir  = log_path.parent   # write output alongside the log
 
     if res_cfg.get('input_pdb'):
         resname = get_resname(res_cfg['input_pdb'])
     else:
         resname = log_path.stem.replace('_opt', '').replace('_hf', '')
 
-    com_path = args.com or f"{resname}_hf.com"
+    com_path = args.com or str(workdir / f"{resname}_hf.com")
 
     print(f"Parsing optimised geometry from {args.log} ...")
     atoms_xyz = parse_opt_log(args.log)
