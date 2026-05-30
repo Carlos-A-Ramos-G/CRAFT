@@ -42,6 +42,14 @@ def parse_pdb(path):
     return atoms
 
 
+def get_resname(path):
+    """Return the residue name from the first ATOM/HETATM record in *path*."""
+    for line in Path(path).read_text().splitlines():
+        if line.startswith(('ATOM', 'HETATM')):
+            return line[17:21].strip()   # cols 17-20 (up to 4 chars)
+    raise ValueError(f"No ATOM/HETATM records found in {path}")
+
+
 def _fmt_name(name):
     """PDB columns 13-16: 4-char atom name field."""
     return name if len(name) == 4 else f" {name:<3s}"

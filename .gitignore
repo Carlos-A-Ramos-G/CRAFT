@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Generated pipeline files
+*_capped.pdb
+*_opt.com
+*_opt.log
+*_hf.com
+*_hf.log
+*_param.sh
+*.mc
+resp.in
+resp.qin
+esp.dat
+resp.out
+resp.pch
+resp.chg
+*.ac
+*.prepin
+*.frcmod
+*.chk
+
+# SLURM
+*.out
+*.err
+
+# Scratch / temp
+ANTECHAMBER_*
+ATOMTYPE.INF
+sqm.*
+punch
+fort.*
+scratch/
+
+# Docs / misc
+*.html
+message.txt
