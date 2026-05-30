@@ -5,8 +5,9 @@ Generate RESP charge-fitting input files (resp.in and resp.qin).
 Constraints follow the standard AMBER RESP protocol:
   - ACE and NME cap atoms are FIXED to AMBER ff14SB charges.
   - Backbone N, H(amide), C, O of the residue are FIXED to ff14SB values.
-  - Sidechain atoms are FREE to be fit; equivalent H atoms (same bonded heavy
-    atom) are constrained equal to each other.
+  - Sidechain atoms are FREE to be fit; symmetry-equivalent atoms are
+    constrained equal using RDKit canonical ranking (falls back to geometry-only
+    H-on-same-heavy-atom detection if RDKit is unavailable).
 
 Backbone atoms are identified by exact name ('N', 'C', 'O') and by position
 (the amide H is always the second residue atom in cap.py output). This is
@@ -82,23 +83,80 @@ def _pos(a):
     return np.array([a['x'], a['y'], a['z']])
 
 
-def _find_equiv(sidechain_atoms):
+def _find_equiv_rdkit(atoms, sc_indices):
     """
-    Return {local_idx: ref_local_idx} for H atoms in the sidechain that are
-    equivalent to (bonded to the same heavy atom as) an earlier H.
-    Only constrained atoms appear as keys; the reference H does not.
+    Symmetry-equivalent sidechain atoms via RDKit canonical ranking.
+
+    Builds the full molecular graph from covalent-radii distances (all single
+    bonds), runs the Morgan algorithm with breakTies=False, and groups sidechain
+    atoms that share the same rank.  This correctly identifies equivalent heavy
+    atoms (e.g. the three NZ-methyl carbons in trimethyllysine) AND propagates
+    the equivalence to their hydrogens.
+
+    Returns {global_1based: ref_global_1based}.
     """
+    from rdkit import Chem
+
+    mol = Chem.RWMol()
+    for a in atoms:
+        mol.AddAtom(Chem.Atom(_elem(a['name'])))
+
+    conf = Chem.Conformer(len(atoms))
+    for i, a in enumerate(atoms):
+        p = _pos(a)
+        conf.SetAtomPosition(i, (float(p[0]), float(p[1]), float(p[2])))
+    mol.AddConformer(conf, assignId=True)
+
+    pt = Chem.GetPeriodicTable()
+    n = mol.GetNumAtoms()
+    for i in range(n):
+        ri = pt.GetRcovalent(_elem(atoms[i]['name']))
+        for j in range(i + 1, n):
+            rj = pt.GetRcovalent(_elem(atoms[j]['name']))
+            if np.linalg.norm(_pos(atoms[i]) - _pos(atoms[j])) < 1.3 * (ri + rj):
+                mol.AddBond(i, j, Chem.BondType.SINGLE)
+
+    # Skip valence check so unusual charge states (e.g. N+ without formal charge)
+    # do not abort sanitization before hybridization / ring detection runs.
+    Chem.SanitizeMol(
+        mol,
+        Chem.SanitizeFlags.SANITIZE_ALL ^ Chem.SanitizeFlags.SANITIZE_PROPERTIES,
+    )
+
+    ranks = list(Chem.CanonicalRankAtoms(mol, breakTies=False))
+
+    rank_groups = {}
+    for i in sc_indices:
+        rank_groups.setdefault(ranks[i], []).append(i)
+
+    equiv = {}
+    for idxs in rank_groups.values():
+        if len(idxs) < 2:
+            continue
+        idxs = sorted(idxs)
+        ref = idxs[0] + 1          # 1-based global index
+        for later in idxs[1:]:
+            equiv[later + 1] = ref
+    return equiv
+
+
+def _find_equiv_geom(atoms, sc_indices):
+    """
+    Geometry-only fallback: constrain H atoms bonded to the same heavy atom.
+    Returns {global_1based: ref_global_1based}.
+    """
+    sc_atoms = [atoms[i] for i in sc_indices]
+
     h_to_heavy = {}
-    for i, a in enumerate(sidechain_atoms):
+    for li, a in enumerate(sc_atoms):
         if _elem(a['name']) != 'H':
             continue
-        for j, b in enumerate(sidechain_atoms):
-            if i == j:
+        for lj, b in enumerate(sc_atoms):
+            if li == lj or _elem(b['name']) not in ('C', 'N', 'O', 'S', 'P'):
                 continue
-            if _elem(b['name']) in ('C', 'N', 'O', 'S', 'P'):
-                if np.linalg.norm(_pos(a) - _pos(b)) < 1.35:
-                    h_to_heavy[i] = j
-                    break
+            if np.linalg.norm(_pos(a) - _pos(b)) < 1.35:
+                h_to_heavy[li] = lj
+                break
 
     heavy_to_hs = {}
     for h_idx, heavy_idx in h_to_heavy.items():
@@ -107,9 +165,30 @@ def _find_equiv(sidechain_atoms):
     equiv = {}
     for _, hs in heavy_to_hs.items():
         hs.sort()
-        for later_h in hs[1:]:
-            equiv[later_h] = hs[0]
+        ref_global = sc_indices[hs[0]] + 1
+        for later_local in hs[1:]:
+            equiv[sc_indices[later_local] + 1] = ref_global
     return equiv
+
+
+def _find_equiv(atoms, groups):
+    """
+    Dispatcher: try RDKit-based symmetry detection, fall back to geometry-only.
+    Returns {global_1based: ref_global_1based} for all constrained sidechain atoms.
+    """
+    sc_indices = [i for i, g in enumerate(groups) if g == 'sidechain']
+    try:
+        return _find_equiv_rdkit(atoms, sc_indices)
+    except ImportError:
+        print("  Warning: RDKit not found — falling back to geometry-only equivalence "
+              "detection (H atoms on the same heavy atom only). Equivalent heavy atoms "
+              "such as symmetric methyl groups will not be constrained. "
+              "Install RDKit for full symmetry detection.")
+        return _find_equiv_geom(atoms, sc_indices)
+    except Exception as e:
+        print(f"  Warning: RDKit equivalence detection failed ({e}) — "
+              "falling back to geometry-only detection.")
+        return _find_equiv_geom(atoms, sc_indices)
 
 
 # ── resp.in ───────────────────────────────────────────────────────────────────
@@ -128,16 +207,7 @@ def write_resp_in(capped_pdb, charge, resname, output):
     atoms  = parse_pdb(capped_pdb)
     groups = _classify(atoms)
 
-    # Collect sidechain atoms (with their 1-based global indices) for equiv detection
-    sc_pairs = [(i + 1, atoms[i])
-                for i, g in enumerate(groups) if g == 'sidechain']
-    sc_global  = [idx for idx, _ in sc_pairs]
-    sc_dicts   = [a   for _, a   in sc_pairs]
-
-    equiv_local = _find_equiv(sc_dicts)
-    # Convert local (sidechain-list) indices to global 1-based indices
-    sc_equiv = {sc_global[loc]: sc_global[ref]
-                for loc, ref in equiv_local.items()}
+    sc_equiv = _find_equiv(atoms, groups)
 
     # Build per-atom constraint table
     table = []
@@ -149,8 +219,8 @@ def write_resp_in(capped_pdb, charge, resname, output):
             constraint = -1
         table.append((anum, constraint))
 
-    natoms  = len(table)
-    n_sc    = sum(1 for g in groups if g == 'sidechain')
+    natoms = len(table)
+    n_sc   = sum(1 for g in groups if g == 'sidechain')
 
     lines = [
         "capped-resp run #1",

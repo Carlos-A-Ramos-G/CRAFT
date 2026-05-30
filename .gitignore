@@ -26,6 +26,16 @@ resp.chg
 *.out
 *.err
 
+# AMBER tleap / leap output
+*.parm7
+*.rst7
+*.inpcrd
+*.prmtop
+tleap.in
+leap.log
+NEWPDB.PDB
+PREP.INF
+
 # Scratch / temp
 ANTECHAMBER_*
 ATOMTYPE.INF
@@ -33,6 +43,11 @@ sqm.*
 punch
 fort.*
 scratch/
+
+# Example / reference directories
+example_to_replicate/
+existing_examples/
+KME3/
 
 # Docs / misc
 *.html

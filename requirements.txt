@@ -1,0 +1,6 @@
+numpy
+pyyaml
+
+# Optional — enables full symmetry-based RESP equivalence detection in resp.py.
+# Without it, only H atoms bonded to the same heavy atom are constrained equal.
+rdkit

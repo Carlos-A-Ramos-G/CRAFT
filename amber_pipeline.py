@@ -43,9 +43,11 @@ if __name__ == '__main__':
     cfg      = load_config()
     res_cfg  = cfg.get('residue', {})
     amb_cfg  = cfg.get('amber', {}) or {}
+    cap_cfg  = cfg.get('cap',   {}) or {}
 
-    charge  = args.charge  if args.charge  is not None else res_cfg.get('charge', 0)
-    workdir = args.workdir if args.workdir != '.' else (amb_cfg.get('workdir') or '.')
+    charge     = args.charge  if args.charge  is not None else res_cfg.get('charge', 0)
+    workdir    = args.workdir if args.workdir != '.' else (amb_cfg.get('workdir') or '.')
+    capped_pdb = cap_cfg.get('output_pdb') or None   # None → auto-detect in run_amber_pipeline
 
     if args.resname:
         resname = args.resname
@@ -71,4 +73,5 @@ if __name__ == '__main__':
         workdir     = workdir,
         atom_type   = amb_cfg.get('atom_type', 'amber'),
         ff14sb      = amb_cfg.get('ff14sb_frcmod', True),
+        capped_pdb  = capped_pdb,
     )
