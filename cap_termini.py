@@ -188,31 +188,57 @@ def cap(input_pdb, output_pdb):
 
     # ── Inspect termini ───────────────────────────────────────────────────────
     h_on_N, oxt_idx, n_label, c_label = inspect_termini(atoms, N, C)
-    remove_idx = set(h_on_N) | set(oxt_idx)
+
+    # Single amide H (PDB-cut): keep it in place and use it to anchor ACE.
+    # For 0 H (bare N) or 2+ H (free amino acid), remove all and recompute.
+    if len(h_on_N) == 1:
+        h_remove = []
+        existing_H_pos = np.array([atoms[h_on_N[0]]['x'],
+                                   atoms[h_on_N[0]]['y'],
+                                   atoms[h_on_N[0]]['z']])
+        inject_amide_H = False
+    else:
+        h_remove = h_on_N
+        existing_H_pos = None
+        inject_amide_H = True
+
+    remove_idx = set(h_remove) | set(oxt_idx)
 
     print(f"Input : {input_pdb}  ({len(atoms)} atoms, residue {resName})")
     print(f"  N-terminus : {n_label}")
     print(f"  C-terminus : {c_label}")
-    print(f"  Action     : remove {len(h_on_N)} H(s) on N"
-          + (f" + {atoms[oxt_idx[0]]['name']}" if oxt_idx else "")
-          + ", add ACE / recompute amide-H / add NME")
+    h_action = ("keep existing amide-H, use it to anchor ACE"
+                if existing_H_pos is not None
+                else f"remove {len(h_remove)} H(s) on N, add amide-H")
+    print(f"  Action     : {h_action}"
+          + (f", remove {atoms[oxt_idx[0]]['name']}" if oxt_idx else "")
+          + ", add ACE / add NME")
 
     # ── Place ACE ─────────────────────────────────────────────────────────────
-    # nerf convention: input dihedral = standard dihedral + 180°
-    # want standard C–CA–N–ACE_C = 180° (trans ω)  →  pass 0°
-    ACE_C   = nerf(C, CA, N,      1.335, 121.0,   0.0)
+    if existing_H_pos is not None:
+        # Derive ACE_C as the third sp2 bond from N, opposite N→H and N→CA.
+        ACE_C = sp2_third(N, existing_H_pos, CA, 1.335)
+    else:
+        # nerf convention: input dihedral = standard dihedral + 180°
+        # want standard C–CA–N–ACE_C = 180° (trans ω)  →  pass 0°
+        ACE_C = nerf(C, CA, N, 1.335, 121.0, 0.0)
     # want standard CA–N–ACE_C–O  = 0°  (cis, trans amide)  →  pass 180°
     ACE_O   = nerf(CA, N, ACE_C,  1.229, 120.5, 180.0)
     ACE_CH3 = sp2_third(ACE_C, ACE_O, N, 1.522)
     ACE_Hs  = methyl_H(ACE_CH3, ACE_C)
 
-    # ── Backbone amide H (always recomputed from ACE geometry) ───────────────
-    # want standard CA–ACE_C–N–H = 180°  →  pass 0°
-    N_H = nerf(CA, ACE_C, N, 1.010, 118.0, 0.0)
+    # ── Backbone amide H ─────────────────────────────────────────────────────
+    if inject_amide_H:
+        # want standard CA–ACE_C–N–H = 180°  →  pass 0°
+        N_H = nerf(CA, ACE_C, N, 1.010, 118.0, 0.0)
+    else:
+        N_H = None
 
     # ── Place NME ─────────────────────────────────────────────────────────────
-    # want standard N–CA–C–NME_N = 180° (extended ψ)  →  pass 0°
-    NME_N   = nerf(N, CA, C,       1.335, 116.6,   0.0)
+    # C is sp2: NME_N is the third substituent opposite the CA–C–O bisector.
+    # Using sp2_third (not NERF) ensures NME_N is placed from the *actual*
+    # O position, not a backbone dihedral that may not match where O sits.
+    NME_N   = sp2_third(C, CA, O, 1.335)
     # want standard CA–C–NME_N–H  = 0°  (cis to CA)  →  pass 180°
     NME_H   = nerf(CA, C, NME_N,   1.010, 119.0, 180.0)
     NME_CH3 = sp2_third(NME_N, C, NME_H, 1.449)
@@ -237,7 +263,7 @@ def cap(input_pdb, output_pdb):
                             (a['x'], a['y'], a['z']),
                             a['occupancy'], a['tempFactor']))
         ser += 1; n_written += 1
-        if a['name'] == 'N':                       # inject amide H right after N
+        if a['name'] == 'N' and inject_amide_H:   # inject amide H right after N
             out.append(pdb_line(ser, 'H', resName, 2, N_H))
             ser += 1; n_written += 1
 
