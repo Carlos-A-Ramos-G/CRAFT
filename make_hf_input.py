@@ -14,8 +14,8 @@ import sys
 import argparse
 import yaml
 from pathlib import Path
-from parameterize import parse_opt_log, write_hf_com, get_resname
-from parameterize.gaussian import NPROC_DEFAULT, MEM_DEFAULT, HF_ROUTE_DEFAULT
+from craft import parse_opt_log, write_hf_com, get_resname
+from craft.gaussian import NPROC_DEFAULT, MEM_DEFAULT, HF_ROUTE_DEFAULT
 
 
 def load_config(path='config.yaml'):

@@ -1,5 +1,5 @@
 """
-parameterize.resp
+craft.resp
 Generate RESP charge-fitting input files (resp.in and resp.qin).
 
 Constraints follow the standard AMBER RESP protocol:

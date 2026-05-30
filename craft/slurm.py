@@ -1,5 +1,5 @@
 """
-parameterize.slurm
+craft.slurm
 Generate a single SLURM batch script that runs the entire parameterization
 pipeline end-to-end without manual intervention between phases:
 
@@ -57,7 +57,7 @@ def write_slurm(cfg, output):
     Parameters
     ----------
     cfg    : dict — full parsed config.yaml
-    output : str | Path — path of the generated script (e.g. 'KME3_param.sh')
+    output : str | Path — path of the generated script (e.g. 'KME3_craft.sh')
     """
     res_cfg  = cfg.get('residue', {})
     g_opt    = cfg.get('gaussian_opt', {}) or {}
@@ -66,7 +66,7 @@ def write_slurm(cfg, output):
 
     input_pdb = res_cfg.get('input_pdb', '')
     resname   = get_resname(input_pdb) if input_pdb else Path(input_pdb or 'residue.pdb').stem
-    job_name  = sl.get('job_name') or f"{resname}_param"
+    job_name  = sl.get('job_name') or f"{resname}_craft"
 
     opt_com  = g_opt.get('output_com') or f"{resname}_opt.com"
     opt_log  = Path(opt_com).stem + '.log'

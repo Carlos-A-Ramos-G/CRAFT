@@ -10,8 +10,8 @@
 #     python amber_pipeline.py KME3_hf.log   # Phase 3  — local
 #
 #   Single SLURM job (full pipeline):
-#     python make_slurm.py                    # generates KME3_param.sh
-#     sbatch KME3_param.sh
+#     python make_slurm.py                    # generates KME3_craft.sh
+#     sbatch KME3_craft.sh
 
 # ── Residue ───────────────────────────────────────────────────────────────────
 residue:
@@ -45,7 +45,7 @@ amber:
 
 # ── SLURM (used by make_slurm.py) ────────────────────────────────────────────
 slurm:
-  job_name:               # leave blank → <base>_param
+  job_name:               # leave blank → <base>_craft
   output: param_%j.out
   error:  param_%j.err
   ntasks: 1

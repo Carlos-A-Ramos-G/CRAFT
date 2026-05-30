@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-make_gaussian_input.py  —  standalone entry point (delegates to parameterize.gaussian)
+make_gaussian_input.py  —  standalone entry point (delegates to craft.gaussian)
 Generates the B3LYP geometry-optimisation .com from a capped PDB.
 
 Usage:
@@ -12,7 +12,7 @@ Usage:
 import sys
 import argparse
 from pathlib import Path
-from parameterize.gaussian import write_com, NPROC_DEFAULT, MEM_DEFAULT, ROUTE_DEFAULT
+from craft.gaussian import write_com, NPROC_DEFAULT, MEM_DEFAULT, ROUTE_DEFAULT
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(

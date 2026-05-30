@@ -20,8 +20,8 @@ Usage:
 import sys
 import yaml
 from pathlib import Path
-from parameterize import cap, get_resname, write_com, write_resp_in, write_resp_qin, write_mc
-from parameterize.gaussian import NPROC_DEFAULT, MEM_DEFAULT, ROUTE_DEFAULT, HF_ROUTE_DEFAULT
+from craft import cap, get_resname, write_com, write_resp_in, write_resp_qin, write_mc
+from craft.gaussian import NPROC_DEFAULT, MEM_DEFAULT, ROUTE_DEFAULT, HF_ROUTE_DEFAULT
 
 
 def load_config(path):

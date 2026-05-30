@@ -1,5 +1,5 @@
 """
-parameterize.mc
+craft.mc
 Generate the prepgen main-chain (.mc) file for a capped residue PDB.
 
 The .mc file tells prepgen:

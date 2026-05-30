@@ -1,5 +1,5 @@
 """
-parameterize.amber
+craft.amber
 Run the post-Gaussian AMBER parameterization pipeline:
 
   espgen      – extract ESP grid from Gaussian HF log

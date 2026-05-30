@@ -1,5 +1,5 @@
 """
-parameterize.gaussian
+craft.gaussian
 Generate Gaussian input files (.com) from capped PDB or optimised log.
 
 Two flavours:

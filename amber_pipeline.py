@@ -16,7 +16,7 @@ import sys
 import argparse
 import yaml
 from pathlib import Path
-from parameterize import run_amber_pipeline, get_resname
+from craft import run_amber_pipeline, get_resname
 
 
 def load_config(path='config.yaml'):

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-cap_termini.py  —  standalone entry point (delegates to parameterize.cap)
+cap_termini.py  —  standalone entry point (delegates to craft.cap)
 
 Usage:
     python cap_termini.py MEO.pdb
@@ -9,7 +9,7 @@ Usage:
 
 import sys
 from pathlib import Path
-from parameterize import cap
+from craft import cap
 
 if __name__ == '__main__':
     inp = sys.argv[1] if len(sys.argv) > 1 else 'KME3.pdb'

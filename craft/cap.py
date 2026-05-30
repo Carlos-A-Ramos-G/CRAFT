@@ -1,5 +1,5 @@
 """
-parameterize.cap
+craft.cap
 Add ACE (N-terminal) and NME (C-terminal) capping groups to a single-residue PDB.
 
 Works regardless of how the residue was obtained:
