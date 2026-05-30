@@ -200,7 +200,7 @@ craft/
 
 ## Roadmap
 
-CRAFT is an early iteration toward **Apotheosis**, a complete parameterization suite that will additionally cover N-terminal and C-terminal forms of non-standard residues.
+CRAFT is an early iteration, N-terminal and C-terminal forms of non-standard residues will be added in the future.
 
 ---
 
