@@ -10,30 +10,12 @@ The .mc file tells prepgen:
   - What AMBER atom type connects on each side (PRE_HEAD_TYPE / POST_TAIL_TYPE)
   - The net charge of the residue in the peptide
 
-Atom names in the .mc file use the antechamber convention: element + sequential
-counter (C1, H1, C2, …), assigned in the order atoms appear in the capped PDB.
-This naming is deterministic and matches what antechamber produces from the
-Gaussian log that was generated with the same atom ordering.
+Atom names in the .mc file are taken directly from the capped PDB, which
+matches the names written into the .ac file by remap_ac_atom_names().
 """
 
 from pathlib import Path
-from .cap import parse_pdb, _elem
-
-
-def _ac_names(atoms):
-    """
-    Predict antechamber atom names from a list of PDB atom dicts.
-
-    Antechamber names atoms element-sequentially in input order:
-    first C → C1, second C → C2, first H → H1, second H → H2, etc.
-    """
-    counts = {}
-    names  = []
-    for a in atoms:
-        e = _elem(a['name'])
-        counts[e] = counts.get(e, 0) + 1
-        names.append(f"{e}{counts[e]}")
-    return names
+from .cap import parse_pdb
 
 
 def write_mc(capped_pdb, charge, output):
@@ -48,14 +30,11 @@ def write_mc(capped_pdb, charge, output):
     output     : str | Path — output path (e.g. 'MEO.mc')
     """
     atoms    = parse_pdb(capped_pdb)
-    ac       = _ac_names(atoms)
-    name_map = {i: ac[i] for i in range(len(atoms))}   # index → ac name
+    name_map = {i: atoms[i]['name'] for i in range(len(atoms))}  # index → pdb name
 
     ace_idx  = [i for i, a in enumerate(atoms) if a['resSeq'] == 1]
     res_idx  = [i for i, a in enumerate(atoms) if a['resSeq'] == 2]
     nme_idx  = [i for i, a in enumerate(atoms) if a['resSeq'] == 3]
-
-    res_atoms = [atoms[i] for i in res_idx]
 
     # Backbone atoms in residue: N (first), CA (named 'CA'), C (named 'C')
     head_i    = res_idx[0]                                      # N

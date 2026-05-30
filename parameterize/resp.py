@@ -22,10 +22,11 @@ from .cap import parse_pdb, _elem
 
 # ── AMBER ff14SB charges for fixed atoms ──────────────────────────────────────
 # Order matches the capped-PDB atom ordering produced by cap.py:
-#   ACE: CH3(C)  H1  H2  H3  C  O
+#   ACE: methyl-C  methyl-H1  methyl-H2  methyl-H3  carbonyl-C  carbonyl-O
 #   Backbone N-terminus side: N  H(amide)
 #   Backbone C-terminus side: C  O
-#   NME: N  H  C  H1  H2  H3
+#   NME: amide-N  amide-H  methyl-C  methyl-H1  methyl-H2  methyl-H3
+# (Actual atom names in the PDB are unique per-molecule; charges map by position.)
 
 ACE_CHARGES        = [-0.3662,  0.1123,  0.1123,  0.1123,  0.5972, -0.5679]
 BACKBONE_N_CHARGES = [-0.4157,  0.2719]   # backbone N, amide H

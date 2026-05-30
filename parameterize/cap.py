@@ -247,11 +247,29 @@ def cap(input_pdb, output_pdb):
     ser = 1
     out = []
 
-    # ACE (resSeq 1): CH3 H1 H2 H3 C O
-    for name, xyz in [('CH3', ACE_CH3), ('H1', ACE_Hs[0]),
+    # Build a set of names already taken by the residue so cap names are
+    # globally unique across the whole capped molecule.
+    used_names = {atoms[i]['name'] for i in range(len(atoms)) if i not in remove_idx}
+    if inject_amide_H:
+        used_names.add('H')   # the amide H we'll inject into the residue
+
+    def _cap_name(base):
+        """Return base if unused, else base+1, base+2, … until unique."""
+        if base not in used_names:
+            used_names.add(base)
+            return base
+        n = 1
+        while f"{base}{n}" in used_names:
+            n += 1
+        name = f"{base}{n}"
+        used_names.add(name)
+        return name
+
+    # ACE (resSeq 1)
+    for base, xyz in [('CH3', ACE_CH3), ('H1', ACE_Hs[0]),
                       ('H2', ACE_Hs[1]), ('H3',  ACE_Hs[2]),
                       ('C',  ACE_C),     ('O',   ACE_O)]:
-        out.append(pdb_line(ser, name, 'ACE', 1, xyz)); ser += 1
+        out.append(pdb_line(ser, _cap_name(base), 'ACE', 1, xyz)); ser += 1
 
     # Residue (resSeq 2): write N, then inject new amide H if needed, then rest
     n_written = 0
@@ -266,10 +284,10 @@ def cap(input_pdb, output_pdb):
             out.append(pdb_line(ser, 'H', resName, 2, N_H))
             ser += 1; n_written += 1
 
-    # NME (resSeq 3): N H C H1 H2 H3
-    for name, xyz in [('N', NME_N), ('H',  NME_H),  ('C',  NME_CH3),
+    # NME (resSeq 3)
+    for base, xyz in [('N', NME_N), ('H',  NME_H),  ('C',  NME_CH3),
                       ('H1', NME_Hs[0]), ('H2', NME_Hs[1]), ('H3', NME_Hs[2])]:
-        out.append(pdb_line(ser, name, 'NME', 3, xyz)); ser += 1
+        out.append(pdb_line(ser, _cap_name(base), 'NME', 3, xyz)); ser += 1
 
     out.append(f'TER   {ser:5d}      NME     3\n')
     out.append('END\n')
