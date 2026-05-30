@@ -1,0 +1,17 @@
+# Parameterization pipeline configuration
+# Run the full pipeline with: python run.py
+# Run with a different config: python run.py path/to/config.yaml
+
+residue:
+  input_pdb: MEO.pdb      # raw (uncapped) single-residue PDB
+  charge: 0               # net molecular charge (e.g. 1 for cationic Lys derivative)
+  multiplicity: 1         # spin multiplicity (1 = singlet, 2 = doublet, ...)
+
+cap:
+  output_pdb:             # leave blank → <stem>_capped.pdb
+
+gaussian:
+  nproc: 16
+  mem: 512MB
+  route: "#P b3lyp/6-31g* opt"
+  output_gjf:             # leave blank → <base>_hf.gjf
