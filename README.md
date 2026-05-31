@@ -10,54 +10,78 @@ CRAFT automates the parameterization of non-standard amino acid residues for AMB
 
 Given a single-residue PDB file, CRAFT produces the `.prepin` topology and `.frcmod` force-field parameter files needed to simulate the residue in AMBER, using AMBER's standard ff14SB backbone charges and RESP-fitted sidechain charges.
 
+Three terminal positions are supported:
+
+| `position` | Capping | Use case |
+|---|---|---|
+| `middle` | ACE---residue---NME | Interior position in a peptide chain |
+| `cterm` | ACE---residue | C-terminal residue |
+| `nterm` | residue---NME | N-terminal residue |
+
+Each variant is parameterized independently and written to its own subdirectory (`<resname>/<position>/`).
+
 ```
 raw PDB
-  │
-  ▼  Phase 1 (local)
-cap termini (ACE/NME)
+  |
+  v  Phase 1 (local)
+cap termini (ACE, NME, or both depending on position)
 generate Gaussian opt input (.com)
 generate RESP files (resp.in, resp.qin)
 generate prepgen main-chain file (.mc)
-  │
-  ▼  Phase 2a (HPC)
+  |
+  v  Phase 2a (HPC)
 Gaussian B3LYP/6-31G* geometry optimisation
-  │
-  ▼  Phase 2b (local)
-extract optimised geometry → HF/6-31G(d) input (.com)
-  │
-  ▼  Phase 2c (HPC)
+  |
+  v  Phase 2b (local)
+extract optimised geometry -> HF/6-31G(d) input (.com)
+  |
+  v  Phase 2c (HPC)
 Gaussian HF/6-31G(d) single-point (ESP)
-  │
-  ▼  Phase 3 (local / HPC)
-espgen → resp → antechamber → prepgen → parmchk2
-  │
-  ▼
-<resname>.prepin   — residue topology
-<resname>_gaff.frcmod   — GAFF missing parameters
-<resname>_ff14SB.frcmod — ff14SB missing parameters
+  |
+  v  Phase 3 (local / HPC)
+espgen -> resp -> antechamber -> prepgen -> parmchk2
+  |
+  v
+<resname>/<position>/<base>.prepin        -- residue topology
+<resname>/<position>/<base>_gaff.frcmod  -- GAFF missing parameters
+<resname>/<position>/<base>_ff14SB.frcmod -- ff14SB missing parameters
 ```
+
+Where `<base>` is `<resname>` for `middle`, `<resname>_cterm` for `cterm`, and `<resname>_nterm` for `nterm`.
 
 ---
 
-## Requirements
+## Installation
 
-**Python packages**
-
-```
-numpy
-pyyaml
-rdkit        # optional — enables full symmetry-based RESP equivalence detection
-```
-
-Install with:
+**Python dependencies**
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Without RDKit, CRAFT falls back to geometry-only equivalence detection (H atoms bonded to the same heavy atom are constrained equal, but equivalent heavy atoms such as symmetric methyl groups are not). A warning is printed at runtime.
+| Package | Required | Notes |
+|---------|----------|-------|
+| `numpy` | yes | |
+| `pyyaml` | yes | |
+| `rdkit` | no | Full symmetry-based RESP equivalence detection; falls back to geometry-only without it |
 
-**External tools** (must be available in `$PATH`)
+**Install CRAFT as a package**
+
+```bash
+pip install .
+```
+
+This registers the `craft-*` commands in the active conda environment. Run from any directory once installed.
+
+**Verify the environment**
+
+```bash
+craft-check
+```
+
+This checks that all required tools (Gaussian, AmberTools) and Python packages are available before you submit a job.
+
+**External tools** (must be in `$PATH`)
 
 | Tool | Source |
 |------|--------|
@@ -70,64 +94,75 @@ Without RDKit, CRAFT falls back to geometry-only equivalence detection (H atoms 
 
 **1. Prepare your input**
 
-Place a single-residue PDB in your working directory and fill in `config.yaml`:
+Place a single-residue PDB in your working directory and create a `config.yaml` (copy from the reference template):
 
 ```yaml
 residue:
   input_pdb: KME3/KME3.pdb
   charge: +1
   multiplicity: 1
+  position: middle        # middle | cterm | nterm
 ```
 
-The PDB can be a free amino acid (zwitterionic), a residue cut from a PDB chain (bare N, single amide H, no OXT), or anything in between. CRAFT inspects the termini and handles all cases.
+The PDB can be a free amino acid (zwitterionic), a residue cut from a PDB chain (bare N, single amide H, no OXT), or anything in between. CRAFT inspects the termini and handles all cases. For `cterm` and `nterm` variants, the free terminus must be correctly protonated in the input PDB.
 
 **2. Run the pipeline**
 
-Phase 1 creates a `<resname>/` subdirectory and writes all outputs there, keeping the project root clean.
-
-*Manual (step-by-step):*
+*If CRAFT is installed as a package (`pip install .`):*
 
 ```bash
-# Phase 1 — local; creates <resname>/
-python run.py
+# Phase 1 -- local; creates <resname>/<position>/
+craft-run
 
-# Phase 2a — submit geometry optimisation to HPC
-#   Input:  <resname>/<resname>_opt.com
-#   Output: <resname>/<resname>_opt.log  (copy back from HPC)
+# Phase 2a -- submit geometry optimisation to HPC
+#   Input:  <resname>/<position>/<base>_opt.com
+#   Output: <resname>/<position>/<base>_opt.log  (copy back from HPC)
 
-# Phase 2b — local, after opt log arrives
-python make_hf_input.py <resname>/<resname>_opt.log
+# Phase 2b -- local, after opt log arrives
+craft-hf-input <resname>/<position>/<base>_opt.log
 
-# Phase 2c — submit HF/ESP single-point to HPC
-#   Input:  <resname>/<resname>_hf.com
-#   Output: <resname>/<resname>_hf.log  (copy back from HPC)
+# Phase 2c -- submit HF/ESP single-point to HPC
+#   Input:  <resname>/<position>/<base>_hf.com
+#   Output: <resname>/<position>/<base>_hf.log  (copy back from HPC)
 
-# Phase 3 — local, after HF log arrives
-python amber_pipeline.py <resname>/<resname>_hf.log
+# Phase 3 -- local, after HF log arrives
+craft-amber <resname>/<position>/<base>_hf.log
 ```
 
 *Automated (single SLURM job):*
 
 ```bash
-python make_slurm.py     # generates <resname>/<resname>_craft.sh
-cd <resname>
-sbatch <resname>_craft.sh
+craft-slurm                              # generates <resname>/<position>/<base>_craft.sh
+cd <resname>/<position>
+sbatch <base>_craft.sh
 ```
 
-The SLURM script has absolute paths baked in at generation time, so it can be submitted from any directory and runs correctly regardless of where SLURM sets the working directory.
+*If running directly from source (no install):*
+
+```bash
+python run.py
+python make_hf_input.py <resname>/<position>/<base>_opt.log
+python amber_pipeline.py <resname>/<position>/<base>_hf.log
+# or
+python make_slurm.py
+cd <resname>/<position> && sbatch <base>_craft.sh
+```
+
+The SLURM script has absolute paths baked in at generation time, so it runs correctly regardless of where SLURM sets the working directory.
 
 ---
 
-## Scripts
+## Commands
 
-| Script | Phase | Description |
-|--------|-------|-------------|
-| `run.py` | 1 | Cap termini, generate all pre-Gaussian inputs |
-| `make_hf_input.py` | 2b | Extract optimised geometry, write HF `.com` |
-| `amber_pipeline.py` | 3 | Run espgen → resp → antechamber → prepgen → parmchk2 |
-| `cap_termini.py` | — | Standalone ACE/NME capping utility |
-| `make_gaussian_input.py` | — | Standalone Gaussian opt `.com` writer |
-| `make_slurm.py` | — | Generate a single SLURM script for the full pipeline |
+| Command | Phase | Description |
+|---------|-------|-------------|
+| `craft-check` | — | Verify all required tools and packages are available |
+| `craft-run` | 1 | Cap termini, generate all pre-Gaussian inputs |
+| `craft-hf-input` | 2b | Extract optimised geometry, write HF `.com` |
+| `craft-amber` | 3 | Run espgen → resp → antechamber → prepgen → parmchk2 |
+| `craft-slurm` | — | Generate a single SLURM script for the full pipeline |
+
+Equivalent convenience scripts (`run.py`, `make_hf_input.py`, `amber_pipeline.py`, `make_slurm.py`) are also provided for users who prefer to run directly from source without installing.
 
 ---
 
@@ -138,29 +173,30 @@ residue:
   input_pdb: KME3/KME3.pdb   # raw single-residue PDB
   charge: +1                  # net molecular charge
   multiplicity: 1             # spin multiplicity (1 = singlet)
+  position: middle            # middle | cterm | nterm
 
 cap:
-  output_pdb:                 # leave blank → <stem>_capped.pdb
+  output_pdb:                 # leave blank -> <base>_capped.pdb
 
 gaussian_opt:
   nproc: 16
   mem: 512MB
   route: "#P b3lyp/6-31g* opt"
-  output_com:                 # leave blank → <base>_opt.com
+  output_com:                 # leave blank -> <base>_opt.com
 
 gaussian_hf:
   nproc: 16
   mem: 512MB
   route: "#p hf/6-31g(d) SCF=Tight Pop=MK IOp(6/33=2)"
-  output_com:                 # leave blank → <base>_hf.com
+  output_com:                 # leave blank -> <base>_hf.com
 
 amber:
   atom_type: amber            # amber | gaff | gaff2
   ff14sb_frcmod: true         # generate ff14SB frcmod (requires $AMBERHOME)
-  workdir:                    # leave blank → <resname>/ (derived from HF log path)
+  workdir:                    # leave blank -> derived from HF log path
 
 slurm:
-  job_name:                   # leave blank → <base>_craft
+  job_name:                   # leave blank -> <base>_craft
   output: param_%j.out
   error:  param_%j.err
   ntasks: 1
@@ -170,7 +206,8 @@ slurm:
   modules:
     - apps/gaussian/g16
     - apps/amber/24
-  conda_env: your_env         # conda env with numpy/pyyaml; leave blank if not needed
+  conda_env: your_env         # conda env where CRAFT is installed (pip install .)
+                              # and that has numpy/pyyaml; leave blank if not needed
 ```
 
 ---
@@ -179,28 +216,30 @@ slurm:
 
 ```
 craft/
-  __init__.py    — public API
-  cap.py         — ACE/NME capping, PDB I/O, geometry utilities
-  gaussian.py    — Gaussian .com writers, opt log parser
-  resp.py        — resp.in / resp.qin generation, RESP equivalence detection
-  mc.py          — prepgen main-chain (.mc) file writer
-  amber.py       — antechamber, prepgen, parmchk2 runner; atom name remapping
-  slurm.py       — SLURM batch script generator
+  __init__.py    -- public API
+  cap.py         -- ACE/NME capping, PDB I/O, geometry utilities
+  gaussian.py    -- Gaussian .com writers, opt log parser
+  resp.py        -- resp.in / resp.qin generation, RESP equivalence detection
+  mc.py          -- prepgen main-chain (.mc) file writer
+  amber.py       -- antechamber, prepgen, parmchk2 runner; atom name remapping
+  slurm.py       -- SLURM batch script generator
+  cli.py         -- craft-* command entry points
+  check.py       -- environment checker (craft-check)
 ```
 
 ---
 
 ## RESP charge protocol
 
-- **ACE and NME cap atoms** — fixed to AMBER ff14SB charges.
-- **Backbone N, H (amide), C, O** — fixed to ff14SB values.
-- **Sidechain atoms** — free to be fit by RESP; symmetry-equivalent atoms (e.g. the three NZ-methyl carbons of trimethyllysine) are constrained equal using RDKit canonical Morgan ranking.
+Fixed and free atoms depend on the terminal position:
 
----
+| Position | Fixed (ff14SB values) | Free (RESP-fitted) |
+|---|---|---|
+| `middle` | ACE + backbone N, H, C, O + NME | sidechain |
+| `cterm` | ACE + backbone N, H | sidechain + C-terminal C, O, OXT |
+| `nterm` | NME + backbone C, O | sidechain + N-terminal N, H atoms |
 
-## Roadmap
-
-CRAFT is an early iteration, N-terminal and C-terminal forms of non-standard residues will be added in the future.
+Symmetry-equivalent sidechain atoms (e.g. the three NZ-methyl carbons of trimethyllysine) are constrained equal using RDKit canonical Morgan ranking. Without RDKit, only H atoms bonded to the same heavy atom are constrained (a warning is printed).
 
 ---
 

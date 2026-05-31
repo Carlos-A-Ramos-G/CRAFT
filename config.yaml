@@ -1,15 +1,29 @@
 # CRAFT configuration reference
 #
-# Copy this file and fill in the values for your residue.
-# All outputs land in <resname>/<position>/, e.g. KME3/middle/
+# Copy this file, fill in the values for your residue, and save it as config.yaml
+# in your working directory. All outputs land in <resname>/<position>/,
+# e.g. KME3/middle/, KME3/cterm/, KME3/nterm/
+#
+# -- If CRAFT is installed as a package (pip install .) ----------------------
 #
 #   Manually (step-by-step):
-#     python run.py                                              # Phase 1 -- local
-#     python make_hf_input.py KME3/middle/KME3_opt.log         # Phase 2b -- local
-#     python amber_pipeline.py KME3/middle/KME3_hf.log         # Phase 3  -- local
+#     craft-run                                         # Phase 1
+#     craft-hf-input KME3/middle/KME3_opt.log           # Phase 2b
+#     craft-amber    KME3/middle/KME3_hf.log            # Phase 3
 #
 #   Single SLURM job (full pipeline):
-#     python make_slurm.py                    # generates KME3/middle/KME3_craft.sh
+#     craft-slurm                         # generates KME3/middle/KME3_craft.sh
+#     cd KME3/middle && sbatch KME3_craft.sh
+#
+# -- If running directly from source (no install) ----------------------------
+#
+#   Manually (step-by-step):
+#     python run.py                                     # Phase 1
+#     python make_hf_input.py KME3/middle/KME3_opt.log  # Phase 2b
+#     python amber_pipeline.py KME3/middle/KME3_hf.log  # Phase 3
+#
+#   Single SLURM job (full pipeline):
+#     python make_slurm.py                # generates KME3/middle/KME3_craft.sh
 #     cd KME3/middle && sbatch KME3_craft.sh
 
 # -- Residue -------------------------------------------------------------------
@@ -55,4 +69,6 @@ slurm:
   modules:
     - apps/gaussian/g16
     - apps/amber/24               # needed for espgen, resp, antechamber, parmchk2
-  conda_env:              # conda environment with numpy/pyyaml; leave blank if not needed
+  conda_env:              # conda environment that has numpy/pyyaml AND where craft was
+                          # installed (pip install .); leave blank if craft-* commands are
+                          # already available in the default PATH

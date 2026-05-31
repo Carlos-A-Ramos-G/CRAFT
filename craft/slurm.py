@@ -3,11 +3,11 @@ craft.slurm
 Generate a single SLURM batch script that runs the entire parameterization
 pipeline end-to-end without manual intervention between phases:
 
-  Phase 1  – python run.py
+  Phase 1  – craft-run
   Phase 2a – g16 < <base>_opt.com > <base>_opt.log
-  Phase 2b – python make_hf_input.py <base>_opt.log
+  Phase 2b – craft-hf-input <base>_opt.log
   Phase 2c – g16 < <base>_hf.com  > <base>_hf.log
-  Phase 3  – python amber_pipeline.py <base>_hf.log
+  Phase 3  – craft-amber <base>_hf.log
 """
 
 from pathlib import Path
@@ -20,55 +20,58 @@ _TEMPLATE = """\
 # -- Paths (baked in at generation time) --------------------------------------
 PROJ_ROOT="{proj_root}"
 CRAFT_WD="{workdir}"
+CRAFT_CONFIG="{config_path}"
 
 # -- Environment ---------------------------------------------------------------
 {module_lines}
 export GAUSS_SCRDIR="$CRAFT_WD"
 {conda_block}
-# Python scripts always run from the project root so config.yaml is found.
 cd "$PROJ_ROOT"
 
 # -- Phase 1: cap termini, generate Gaussian inputs and RESP files -------------
-echo "[$(date '+%H:%M:%S')] Phase 1 — run.py"
-python run.py
+echo "[$(date '+%H:%M:%S')] Phase 1 -- craft-run"
+craft-run "$CRAFT_CONFIG"
 [ $? -ne 0 ] && echo "ERROR in Phase 1" && exit 1
 
 # -- Phase 2a: geometry optimisation ------------------------------------------
-echo "[$(date '+%H:%M:%S')] Phase 2a — geometry optimisation ({opt_com})"
+echo "[$(date '+%H:%M:%S')] Phase 2a -- geometry optimisation ({opt_com})"
 g16 < "$CRAFT_WD/{opt_com}" > "$CRAFT_WD/{opt_log}"
 [ $? -ne 0 ] && echo "ERROR in Phase 2a (Gaussian opt)" && exit 1
 
 # -- Phase 2b: build HF/ESP input from optimised geometry ---------------------
-echo "[$(date '+%H:%M:%S')] Phase 2b — make_hf_input.py"
-python make_hf_input.py "$CRAFT_WD/{opt_log}"
-[ $? -ne 0 ] && echo "ERROR in Phase 2b (make_hf_input)" && exit 1
+echo "[$(date '+%H:%M:%S')] Phase 2b -- craft-hf-input"
+craft-hf-input "$CRAFT_WD/{opt_log}" --config "$CRAFT_CONFIG"
+[ $? -ne 0 ] && echo "ERROR in Phase 2b (craft-hf-input)" && exit 1
 
 # -- Phase 2c: HF/6-31G(d) single-point for ESP/RESP -------------------------
-echo "[$(date '+%H:%M:%S')] Phase 2c — HF single-point ({hf_com})"
+echo "[$(date '+%H:%M:%S')] Phase 2c -- HF single-point ({hf_com})"
 g16 < "$CRAFT_WD/{hf_com}" > "$CRAFT_WD/{hf_log}"
 [ $? -ne 0 ] && echo "ERROR in Phase 2c (Gaussian HF)" && exit 1
 
 # -- Phase 3: AMBER parameterization ------------------------------------------
-echo "[$(date '+%H:%M:%S')] Phase 3 — amber_pipeline.py"
-python amber_pipeline.py "$CRAFT_WD/{hf_log}"
-[ $? -ne 0 ] && echo "ERROR in Phase 3 (AMBER pipeline)" && exit 1
+echo "[$(date '+%H:%M:%S')] Phase 3 -- craft-amber"
+craft-amber "$CRAFT_WD/{hf_log}" --config "$CRAFT_CONFIG"
+[ $? -ne 0 ] && echo "ERROR in Phase 3 (craft-amber)" && exit 1
 
 echo "[$(date '+%H:%M:%S')] Done. Output files in $CRAFT_WD"
 """
 
 
-def write_slurm(cfg, output, proj_root, workdir, position='middle'):
+def write_slurm(cfg, output, proj_root, workdir, position='middle', config_path=None):
     """
     Generate the SLURM batch script from config dict.
 
     Parameters
     ----------
-    cfg       : dict       -- full parsed config.yaml
-    output    : str | Path -- path of the generated script
-    proj_root : str | Path -- absolute path to the project root (where run.py lives)
-    workdir   : str | Path -- absolute path to the variant output directory
-                              (e.g. <resname>/<position>/)
-    position  : str        -- 'middle', 'cterm', or 'nterm'
+    cfg         : dict       -- full parsed config.yaml
+    output      : str | Path -- path of the generated script
+    proj_root   : str | Path -- absolute path to the working directory
+    workdir     : str | Path -- absolute path to the variant output directory
+                                (e.g. <resname>/<position>/)
+    position    : str        -- 'middle', 'cterm', or 'nterm'
+    config_path : str | Path -- absolute path to the config file; baked into
+                                the script so craft-* commands find it regardless
+                                of the file name (default: proj_root/config.yaml)
     """
     res_cfg  = cfg.get('residue', {})
     g_opt    = cfg.get('gaussian_opt', {}) or {}
@@ -114,12 +117,16 @@ def write_slurm(cfg, output, proj_root, workdir, position='middle'):
     else:
         conda_block = ''
 
+    if config_path is None:
+        config_path = Path(proj_root) / 'config.yaml'
+
     script = _TEMPLATE.format(
         sbatch_directives='\n'.join(directives),
         module_lines=module_lines,
         conda_block=conda_block,
         proj_root=str(proj_root),
         workdir=str(workdir),
+        config_path=str(config_path),
         opt_com=opt_com,
         opt_log=opt_log,
         hf_com=hf_com,

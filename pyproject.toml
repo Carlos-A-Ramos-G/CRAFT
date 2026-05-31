@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "craft-amber"
+version = "0.1.0"
+description = "Custom Residue AMBER Forcefield Toolkit"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Carlos A. Ramos-Guzmán" },
+]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+rdkit = ["rdkit>=2022.03"]
+
+[project.scripts]
+craft-run       = "craft.cli:run"
+craft-hf-input  = "craft.cli:hf_input"
+craft-amber     = "craft.cli:amber"
+craft-slurm     = "craft.cli:slurm"
+craft-check     = "craft.cli:check"
+
+[project.urls]
+Repository = "https://github.com/Carlos-A-Ramos-G/CRAFT"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["craft*"]
