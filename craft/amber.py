@@ -127,10 +127,10 @@ def run_amber_pipeline(hf_log, resname, charge, mc_file,
     amberhome = os.environ.get('AMBERHOME', '')
     parm10    = str(Path(amberhome) / 'dat/leap/parm/parm10.dat') if amberhome else 'parm10.dat'
 
-    print("\n── espgen ────────────────────────────────────────────────────────────")
+    print("\n-- espgen ------------------------------------------------------------")
     _run(['espgen', '-i', hf_log, '-o', 'esp.dat'], cwd=wd)
 
-    print("\n── resp ──────────────────────────────────────────────────────────────")
+    print("\n-- resp --------------------------------------------------------------")
     _run([
         'resp', '-O',
         '-i', 'resp.in',
@@ -141,7 +141,7 @@ def run_amber_pipeline(hf_log, resname, charge, mc_file,
         '-e', 'esp.dat',
     ], cwd=wd)
 
-    print("\n── antechamber ───────────────────────────────────────────────────────")
+    print("\n-- antechamber -------------------------------------------------------")
     _run([
         'antechamber',
         '-fi', 'gout',
@@ -155,7 +155,7 @@ def run_amber_pipeline(hf_log, resname, charge, mc_file,
         '-nc', str(charge),
     ], cwd=wd)
 
-    print("\n── remap atom names ─────────────────────────────────────────────────")
+    print("\n-- remap atom names -------------------------------------------------")
     _capped = Path(capped_pdb) if capped_pdb else Path(wd) / f"{resname}_capped.pdb"
     if _capped.exists():
         remap_ac_atom_names(Path(wd) / ac_file, _capped)
@@ -170,7 +170,7 @@ def run_amber_pipeline(hf_log, resname, charge, mc_file,
     if mc_dst.resolve() != Path(mc_file).resolve():
         shutil.copy(mc_file, mc_dst)
 
-    print("\n── prepgen ───────────────────────────────────────────────────────────")
+    print("\n-- prepgen -----------------------------------------------------------")
     _run([
         'prepgen',
         '-i',  ac_file,
@@ -179,7 +179,7 @@ def run_amber_pipeline(hf_log, resname, charge, mc_file,
         '-rn', resname,
     ], cwd=wd)
 
-    print("\n── parmchk2 (GAFF) ───────────────────────────────────────────────────")
+    print("\n-- parmchk2 (GAFF) ---------------------------------------------------")
     _run([
         'parmchk2',
         '-i', ac_file,
@@ -188,7 +188,7 @@ def run_amber_pipeline(hf_log, resname, charge, mc_file,
     ], cwd=wd)
 
     if ff14sb:
-        print("\n── parmchk2 (ff14SB) ─────────────────────────────────────────────────")
+        print("\n-- parmchk2 (ff14SB) -------------------------------------------------")
         _run([
             'parmchk2',
             '-i', ac_file,

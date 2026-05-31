@@ -15,7 +15,7 @@ import numpy as np
 from pathlib import Path
 
 
-# ── PDB I/O ───────────────────────────────────────────────────────────────────
+# -- PDB I/O -------------------------------------------------------------------
 
 def parse_pdb(path):
     atoms = []
@@ -67,7 +67,7 @@ def pdb_line(serial, name, res, seq, xyz, occ=1.0, bfac=0.0):
             f"{occ:6.2f}{bfac:6.2f}          {_elem(name):>2s}\n")
 
 
-# ── Geometry ──────────────────────────────────────────────────────────────────
+# -- Geometry ------------------------------------------------------------------
 
 def nerf(A, B, C, length, angle_deg, dihedral_deg):
     """
@@ -123,7 +123,7 @@ def methyl_H(C_pos, bonded_to, bond_length=1.090):
     ]
 
 
-# ── Terminus inspection ───────────────────────────────────────────────────────
+# -- Terminus inspection -------------------------------------------------------
 
 CTERM_ONAMES = {'O1', 'OXT', 'OT1', 'OT2', 'O2'}
 
@@ -165,7 +165,7 @@ def inspect_termini(atoms, N_pos, C_pos):
     return h_on_N, oxt_idx, n_label, c_label
 
 
-# ── Main logic ────────────────────────────────────────────────────────────────
+# -- Main logic ----------------------------------------------------------------
 
 def cap(input_pdb, output_pdb):
     atoms = parse_pdb(input_pdb)
@@ -213,7 +213,7 @@ def cap(input_pdb, output_pdb):
           + (f", remove {atoms[oxt_idx[0]]['name']}" if oxt_idx else "")
           + ", add ACE / add NME")
 
-    # ── Place ACE ─────────────────────────────────────────────────────────────
+    # -- Place ACE -------------------------------------------------------------
     if existing_H_pos is not None:
         # Derive ACE_C as the third sp2 bond from N, opposite N→H and N→CA.
         ACE_C = sp2_third(N, existing_H_pos, CA, 1.335)
@@ -226,14 +226,14 @@ def cap(input_pdb, output_pdb):
     ACE_CH3 = sp2_third(ACE_C, ACE_O, N, 1.522)
     ACE_Hs  = methyl_H(ACE_CH3, ACE_C)
 
-    # ── Backbone amide H ─────────────────────────────────────────────────────
+    # -- Backbone amide H -----------------------------------------------------
     if inject_amide_H:
         # want standard CA–ACE_C–N–H = 180°  →  pass 0°
         N_H = nerf(CA, ACE_C, N, 1.010, 118.0, 0.0)
     else:
         N_H = None
 
-    # ── Place NME ─────────────────────────────────────────────────────────────
+    # -- Place NME -------------------------------------------------------------
     # C is sp2: NME_N is the third substituent opposite the CA–C–O bisector.
     # Using sp2_third (not NERF) ensures NME_N is placed from the *actual*
     # O position, not a backbone dihedral that may not match where O sits.
@@ -243,7 +243,7 @@ def cap(input_pdb, output_pdb):
     NME_CH3 = sp2_third(NME_N, C, NME_H, 1.449)
     NME_Hs  = methyl_H(NME_CH3, NME_N)
 
-    # ── Write output PDB ──────────────────────────────────────────────────────
+    # -- Write output PDB ------------------------------------------------------
     ser = 1
     out = []
 

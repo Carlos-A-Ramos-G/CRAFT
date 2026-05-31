@@ -13,7 +13,7 @@ The checkpoint name is derived from the PDB stem by stripping a trailing
 from pathlib import Path
 
 
-# ── Constants ─────────────────────────────────────────────────────────────────
+# -- Constants -----------------------------------------------------------------
 
 NPROC_DEFAULT    = 16
 MEM_DEFAULT      = "512MB"
@@ -26,7 +26,7 @@ ATOMIC_SYMBOLS = {
 }
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------------------
 
 def _elem(name):
     """Element symbol from a PDB atom name."""
@@ -57,7 +57,7 @@ def _write_gjf(com_path, header_lines, title, charge, mult, atoms_xyz):
     Path(com_path).write_text('\n'.join(blocks) + '\n')
 
 
-# ── Optimisation input (B3LYP/6-31G*) ────────────────────────────────────────
+# -- Optimisation input (B3LYP/6-31G*) ----------------------------------------
 
 def write_com(pdb_path, com_path, charge, mult,
               nproc=NPROC_DEFAULT, mem=MEM_DEFAULT, route=ROUTE_DEFAULT):
@@ -81,7 +81,7 @@ def write_com(pdb_path, com_path, charge, mult,
     print(f"  nproc / mem   : {nproc} / {mem}")
 
 
-# ── Opt-log parser ────────────────────────────────────────────────────────────
+# -- Opt-log parser ------------------------------------------------------------
 
 def parse_opt_log(log_path):
     """
@@ -121,7 +121,7 @@ def parse_opt_log(log_path):
     return atoms
 
 
-# ── HF/6-31G(d) single-point input ───────────────────────────────────────────
+# -- HF/6-31G(d) single-point input -------------------------------------------
 
 def write_hf_com(atoms_xyz, com_path, base, charge, mult,
                  nproc=NPROC_DEFAULT, mem=MEM_DEFAULT, route=HF_ROUTE_DEFAULT):

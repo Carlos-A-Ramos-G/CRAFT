@@ -21,7 +21,7 @@ from pathlib import Path
 from .cap import parse_pdb, _elem
 
 
-# ── AMBER ff14SB charges for fixed atoms ──────────────────────────────────────
+# -- AMBER ff14SB charges for fixed atoms --------------------------------------
 # Order matches the capped-PDB atom ordering produced by cap.py:
 #   ACE: methyl-C  methyl-H1  methyl-H2  methyl-H3  carbonyl-C  carbonyl-O
 #   Backbone N-terminus side: N  H(amide)
@@ -40,7 +40,7 @@ ATOMIC_NUMBERS = {
 }
 
 
-# ── Atom classification ───────────────────────────────────────────────────────
+# -- Atom classification -------------------------------------------------------
 
 def _classify(atoms):
     """
@@ -77,7 +77,7 @@ def _classify(atoms):
     return groups
 
 
-# ── Equivalence detection ─────────────────────────────────────────────────────
+# -- Equivalence detection -----------------------------------------------------
 
 def _pos(a):
     return np.array([a['x'], a['y'], a['z']])
@@ -191,7 +191,7 @@ def _find_equiv(atoms, groups):
         return _find_equiv_geom(atoms, sc_indices)
 
 
-# ── resp.in ───────────────────────────────────────────────────────────────────
+# -- resp.in -------------------------------------------------------------------
 
 def write_resp_in(capped_pdb, charge, resname, output):
     """
@@ -242,7 +242,7 @@ def write_resp_in(capped_pdb, charge, resname, output):
     print(f"  resp.in  : {output}  ({natoms} atoms, {n_sc} sidechain)")
 
 
-# ── resp.qin ──────────────────────────────────────────────────────────────────
+# -- resp.qin ------------------------------------------------------------------
 
 def write_resp_qin(capped_pdb, output):
     """

@@ -17,38 +17,38 @@ from .cap import get_resname
 _TEMPLATE = """\
 #!/bin/bash
 {sbatch_directives}
-# ── Paths (baked in at generation time) ──────────────────────────────────────
+# -- Paths (baked in at generation time) --------------------------------------
 PROJ_ROOT="{proj_root}"
 CRAFT_WD="{workdir}"
 
-# ── Environment ───────────────────────────────────────────────────────────────
+# -- Environment ---------------------------------------------------------------
 {module_lines}
 export GAUSS_SCRDIR="$CRAFT_WD"
 {conda_block}
 # Python scripts always run from the project root so config.yaml is found.
 cd "$PROJ_ROOT"
 
-# ── Phase 1: cap termini, generate Gaussian inputs and RESP files ─────────────
+# -- Phase 1: cap termini, generate Gaussian inputs and RESP files -------------
 echo "[$(date '+%H:%M:%S')] Phase 1 — run.py"
 python run.py
 [ $? -ne 0 ] && echo "ERROR in Phase 1" && exit 1
 
-# ── Phase 2a: geometry optimisation ──────────────────────────────────────────
+# -- Phase 2a: geometry optimisation ------------------------------------------
 echo "[$(date '+%H:%M:%S')] Phase 2a — geometry optimisation ({opt_com})"
 g16 < "$CRAFT_WD/{opt_com}" > "$CRAFT_WD/{opt_log}"
 [ $? -ne 0 ] && echo "ERROR in Phase 2a (Gaussian opt)" && exit 1
 
-# ── Phase 2b: build HF/ESP input from optimised geometry ─────────────────────
+# -- Phase 2b: build HF/ESP input from optimised geometry ---------------------
 echo "[$(date '+%H:%M:%S')] Phase 2b — make_hf_input.py"
 python make_hf_input.py "$CRAFT_WD/{opt_log}"
 [ $? -ne 0 ] && echo "ERROR in Phase 2b (make_hf_input)" && exit 1
 
-# ── Phase 2c: HF/6-31G(d) single-point for ESP/RESP ─────────────────────────
+# -- Phase 2c: HF/6-31G(d) single-point for ESP/RESP -------------------------
 echo "[$(date '+%H:%M:%S')] Phase 2c — HF single-point ({hf_com})"
 g16 < "$CRAFT_WD/{hf_com}" > "$CRAFT_WD/{hf_log}"
 [ $? -ne 0 ] && echo "ERROR in Phase 2c (Gaussian HF)" && exit 1
 
-# ── Phase 3: AMBER parameterization ──────────────────────────────────────────
+# -- Phase 3: AMBER parameterization ------------------------------------------
 echo "[$(date '+%H:%M:%S')] Phase 3 — amber_pipeline.py"
 python amber_pipeline.py "$CRAFT_WD/{hf_log}"
 [ $? -ne 0 ] && echo "ERROR in Phase 3 (AMBER pipeline)" && exit 1
@@ -82,7 +82,7 @@ def write_slurm(cfg, output, proj_root, workdir):
     opt_log  = Path(opt_com).stem + '.log'
     hf_log   = Path(hf_com).stem  + '.log'
 
-    # ── #SBATCH directives ────────────────────────────────────────────────────
+    # -- #SBATCH directives ----------------------------------------------------
     # Always emit job-name first (may be derived, not literally in config).
     # Then iterate every key in the slurm section in config order, skipping
     # non-directive keys and blank values — so users can freely add/remove
@@ -95,12 +95,12 @@ def write_slurm(cfg, output, proj_root, workdir):
             continue
         directives.append(f'#SBATCH --{key.replace("_", "-")}={val}')
 
-    # ── module load lines ─────────────────────────────────────────────────────
+    # -- module load lines -----------------------------------------------------
     modules = sl.get('modules') or []
     module_lines = (f"module load {' '.join(modules)}"
                     if modules else '# (no modules configured)')
 
-    # ── conda activation ──────────────────────────────────────────────────────
+    # -- conda activation ------------------------------------------------------
     conda_env = sl.get('conda_env', '').strip()
     if conda_env:
         conda_block = (

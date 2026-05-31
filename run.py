@@ -41,11 +41,11 @@ def main():
     mult      = res.get('multiplicity', 1)
     resname   = get_resname(input_pdb)        # residue name from PDB records
 
-    # ── Create output directory ───────────────────────────────────────────────
+    # -- Create output directory -----------------------------------------------
     workdir = Path(resname)
     workdir.mkdir(exist_ok=True)
 
-    # ── Step 1: cap ──────────────────────────────────────────────────────────
+    # -- Step 1: cap ----------------------------------------------------------
     cap_cfg    = cfg.get('cap') or {}
     capped_pdb = cap_cfg.get('output_pdb') or str(workdir / f"{resname}_capped.pdb")
 
@@ -54,7 +54,7 @@ def main():
     print("=" * 60)
     cap(input_pdb, capped_pdb)
 
-    # ── Step 2: geometry-optimisation Gaussian input ──────────────────────────
+    # -- Step 2: geometry-optimisation Gaussian input --------------------------
     gauss_cfg = cfg.get('gaussian_opt') or cfg.get('gaussian') or {}
     opt_com   = gauss_cfg.get('output_com') or str(workdir / f"{resname}_opt.com")
 
@@ -71,7 +71,7 @@ def main():
         route=gauss_cfg.get('route', ROUTE_DEFAULT),
     )
 
-    # ── Steps 3-5: RESP and prepgen inputs ───────────────────────────────────
+    # -- Steps 3-5: RESP and prepgen inputs -----------------------------------
     print()
     print("=" * 60)
     print("Steps 3-5 — RESP and prepgen inputs")
