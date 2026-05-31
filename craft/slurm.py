@@ -57,16 +57,18 @@ echo "[$(date '+%H:%M:%S')] Done. Output files in $CRAFT_WD"
 """
 
 
-def write_slurm(cfg, output, proj_root, workdir):
+def write_slurm(cfg, output, proj_root, workdir, position='middle'):
     """
     Generate the SLURM batch script from config dict.
 
     Parameters
     ----------
-    cfg       : dict       — full parsed config.yaml
-    output    : str | Path — path of the generated script (e.g. 'KME3/KME3_craft.sh')
-    proj_root : str | Path — absolute path to the project root (where run.py lives)
-    workdir   : str | Path — absolute path to the residue output directory (<resname>/)
+    cfg       : dict       -- full parsed config.yaml
+    output    : str | Path -- path of the generated script
+    proj_root : str | Path -- absolute path to the project root (where run.py lives)
+    workdir   : str | Path -- absolute path to the variant output directory
+                              (e.g. <resname>/<position>/)
+    position  : str        -- 'middle', 'cterm', or 'nterm'
     """
     res_cfg  = cfg.get('residue', {})
     g_opt    = cfg.get('gaussian_opt', {}) or {}
@@ -75,10 +77,12 @@ def write_slurm(cfg, output, proj_root, workdir):
 
     input_pdb = res_cfg.get('input_pdb', '')
     resname   = get_resname(input_pdb) if input_pdb else Path(input_pdb or 'residue.pdb').stem
-    job_name  = sl.get('job_name') or f"{resname}_craft"
+    suffix    = '' if position == 'middle' else f'_{position}'
+    base      = f"{resname}{suffix}"
+    job_name  = sl.get('job_name') or f"{base}_craft"
 
-    opt_com  = Path(g_opt.get('output_com') or f"{resname}_opt.com").name
-    hf_com   = Path(g_hf.get('output_com')  or f"{resname}_hf.com").name
+    opt_com  = Path(g_opt.get('output_com') or f"{base}_opt.com").name
+    hf_com   = Path(g_hf.get('output_com')  or f"{base}_hf.com").name
     opt_log  = Path(opt_com).stem + '.log'
     hf_log   = Path(hf_com).stem  + '.log'
 

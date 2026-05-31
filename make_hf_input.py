@@ -45,10 +45,11 @@ if __name__ == '__main__':
     res_cfg = cfg.get('residue', {})
     g_cfg   = cfg.get('gaussian_hf', {}) or cfg.get('gaussian', {}) or {}
 
-    charge = args.charge if args.charge is not None else res_cfg.get('charge', 0)
-    mult   = args.mult   if args.mult   is not None else res_cfg.get('multiplicity', 1)
-    nproc  = args.nproc  if args.nproc  is not None else g_cfg.get('nproc', NPROC_DEFAULT)
-    mem    = args.mem    if args.mem    is not None else g_cfg.get('mem', MEM_DEFAULT)
+    charge   = args.charge if args.charge is not None else res_cfg.get('charge', 0)
+    mult     = args.mult   if args.mult   is not None else res_cfg.get('multiplicity', 1)
+    nproc    = args.nproc  if args.nproc  is not None else g_cfg.get('nproc', NPROC_DEFAULT)
+    mem      = args.mem    if args.mem    is not None else g_cfg.get('mem', MEM_DEFAULT)
+    position = res_cfg.get('position', 'middle')
 
     log_path = Path(args.log)
     workdir  = log_path.parent   # write output alongside the log
@@ -57,13 +58,17 @@ if __name__ == '__main__':
         resname = get_resname(res_cfg['input_pdb'])
     else:
         resname = log_path.stem.replace('_opt', '').replace('_hf', '')
+        for pos in ('_cterm', '_nterm'):
+            resname = resname.replace(pos, '')
 
-    com_path = args.com or str(workdir / f"{resname}_hf.com")
+    suffix   = '' if position == 'middle' else f'_{position}'
+    base     = f"{resname}{suffix}"
+    com_path = args.com or str(workdir / f"{base}_hf.com")
 
     print(f"Parsing optimised geometry from {args.log} ...")
     atoms_xyz = parse_opt_log(args.log)
     print(f"  Found {len(atoms_xyz)} atoms in final Standard orientation block")
 
     print(f"Writing HF/6-31G(d) single-point input ...")
-    write_hf_com(atoms_xyz, com_path, resname,
+    write_hf_com(atoms_xyz, com_path, base,
                  charge=charge, mult=mult, nproc=nproc, mem=mem)

@@ -1,58 +1,58 @@
-# Parameterization pipeline configuration
+# CRAFT configuration reference
 #
-# Two ways to run (all outputs land in <resname>/, e.g. KME3/):
+# Copy this file and fill in the values for your residue.
+# All outputs land in <resname>/<position>/, e.g. KME3/middle/
 #
 #   Manually (step-by-step):
-#     python run.py                                    # Phase 1 — local; creates KME3/
-#     sbatch KME3/KME3_opt.com                         # Phase 2a — HPC (geometry opt)
-#     python make_hf_input.py KME3/KME3_opt.log       # Phase 2b — local
-#     sbatch KME3/KME3_hf.com                          # Phase 2c — HPC (HF/ESP)
-#     python amber_pipeline.py KME3/KME3_hf.log       # Phase 3  — local
+#     python run.py                                              # Phase 1 -- local
+#     python make_hf_input.py KME3/middle/KME3_opt.log         # Phase 2b -- local
+#     python amber_pipeline.py KME3/middle/KME3_hf.log         # Phase 3  -- local
 #
 #   Single SLURM job (full pipeline):
-#     python make_slurm.py                    # generates KME3/KME3_craft.sh
-#     cd KME3 && sbatch KME3_craft.sh
+#     python make_slurm.py                    # generates KME3/middle/KME3_craft.sh
+#     cd KME3/middle && sbatch KME3_craft.sh
 
 # -- Residue -------------------------------------------------------------------
 residue:
-  input_pdb: KME3/KME3.pdb      # raw (uncapped) single-residue PDB
-  charge: +1                     # net molecular charge (e.g. 1 for cationic)
-  multiplicity: 1                # spin multiplicity (1 = singlet, ...)
+  input_pdb: YOUR_RESNAME/YOUR_RESNAME.pdb   # raw (uncapped) single-residue PDB
+  charge: 0                                  # net molecular charge (e.g. 1 for cationic)
+  multiplicity: 1                            # spin multiplicity (1 = singlet)
+  position: middle                           # middle | cterm | nterm
 
 # -- Phase 1a: capping ---------------------------------------------------------
 cap:
-  output_pdb:             # leave blank → <stem>_capped.pdb
+  output_pdb:             # leave blank -> <base>_capped.pdb in <resname>/<position>/
 
 # -- Phase 1b: geometry optimisation (B3LYP/6-31G*) ---------------------------
 gaussian_opt:
   nproc: 16
   mem: 512MB
   route: "#P b3lyp/6-31g* opt"
-  output_com:             # leave blank → <base>_opt.com
+  output_com:             # leave blank -> <base>_opt.com in <resname>/<position>/
 
 # -- Phase 2: HF/6-31G(d) single-point for ESP/RESP ---------------------------
 gaussian_hf:
   nproc: 16
   mem: 512MB
   route: "#p hf/6-31g(d) SCF=Tight Pop=MK IOp(6/33=2)"
-  output_com:             # leave blank → <base>_hf.com
+  output_com:             # leave blank -> <base>_hf.com in <resname>/<position>/
 
 # -- Phase 3: AMBER parameterization ------------------------------------------
 amber:
   atom_type: amber        # amber | gaff | gaff2  (passed to antechamber -at)
   ff14sb_frcmod: true     # also generate ff14SB frcmod (requires $AMBERHOME)
-  workdir:                # leave blank → <resname>/ (derived from HF log path)
+  workdir:                # leave blank -> derived from HF log path
 
 # -- SLURM (used by make_slurm.py) --------------------------------------------
 slurm:
-  job_name:               # leave blank → <base>_craft
+  job_name:               # leave blank -> <base>_craft
   output: param_%j.out
   error:  param_%j.err
   ntasks: 1
   cpus_per_task: 16
-  account: CHEM031804
-  partition: mwvdk
+  account: YOUR_ACCOUNT
+  partition: YOUR_PARTITION
   modules:
     - apps/gaussian/g16
     - apps/amber/24               # needed for espgen, resp, antechamber, parmchk2
-  conda_env: mdanalysis   # conda environment with numpy/yaml; leave blank if not needed
+  conda_env:              # conda environment with numpy/pyyaml; leave blank if not needed

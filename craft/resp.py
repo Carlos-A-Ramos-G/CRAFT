@@ -2,16 +2,15 @@
 craft.resp
 Generate RESP charge-fitting input files (resp.in and resp.qin).
 
-Constraints follow the standard AMBER RESP protocol:
-  - ACE and NME cap atoms are FIXED to AMBER ff14SB charges.
-  - Backbone N, H(amide), C, O of the residue are FIXED to ff14SB values.
-  - Sidechain atoms are FREE to be fit; symmetry-equivalent atoms are
-    constrained equal using RDKit canonical ranking (falls back to geometry-only
-    H-on-same-heavy-atom detection if RDKit is unavailable).
+Constraints follow the standard AMBER RESP protocol adapted for each
+terminal position:
 
-Backbone atoms are identified by exact name ('N', 'C', 'O') and by position
-(the amide H is always the second residue atom in cap.py output). This is
-robust regardless of atom ordering within the residue.
+  middle : fix ACE + backbone N/H/C/O + NME; sidechain atoms free
+  cterm  : fix ACE + backbone N/H; C-terminal C/O/OXT and sidechain free
+  nterm  : fix NME + backbone C/O; N-terminal N/H atoms and sidechain free
+
+Backbone atoms are identified by exact name ('N', 'H', 'C', 'O') for the
+fixed end, and by residue sequence number for cap atoms.
 
 Reference: Bayly et al., J. Phys. Chem. 97, 10269 (1993).
 """
@@ -42,19 +41,22 @@ ATOMIC_NUMBERS = {
 
 # -- Atom classification -------------------------------------------------------
 
-def _classify(atoms):
+def _classify(atoms, position='middle'):
     """
     Classify every atom as one of:
       'ace' | 'bb_N' | 'bb_H' | 'sidechain' | 'bb_C' | 'bb_O' | 'nme'
 
-    Backbone N  → exact name 'N' in residue.
-    Backbone H  → second residue atom (cap.py always writes N then H).
-    Backbone C  → exact name 'C' in residue (carbonyl C, not CA/CB/etc.).
-    Backbone O  → exact name 'O' in residue (carbonyl O, not OG/OD1/etc.).
-    Everything else in the residue is sidechain.
+    Which backbone atoms are fixed depends on position:
+      middle : N, H(amide), C, O all fixed
+      cterm  : only N and H(amide) fixed (C-terminus is free)
+      nterm  : only C and O fixed (N-terminus is free)
+
+    The amide H is identified as the second residue atom in the output PDB
+    (cap.py always writes N then the amide H for middle/cterm modes).
+    For nterm, no amide H is injected, so this index is never used as bb_H.
     """
-    res_indices = [i for i, a in enumerate(atoms) if a['resSeq'] == 2]
-    amide_h_global = res_indices[1]   # 0-based index in full atom list
+    res_indices    = [i for i, a in enumerate(atoms) if a['resSeq'] == 2]
+    amide_h_global = res_indices[1]   # only meaningful for middle and cterm
 
     groups = []
     for i, a in enumerate(atoms):
@@ -63,16 +65,34 @@ def _classify(atoms):
         elif a['resSeq'] == 3:
             groups.append('nme')
         else:
-            if a['name'] == 'N':
-                groups.append('bb_N')
-            elif i == amide_h_global:
-                groups.append('bb_H')
-            elif a['name'] == 'C':
-                groups.append('bb_C')
-            elif a['name'] == 'O':
-                groups.append('bb_O')
-            else:
-                groups.append('sidechain')
+            # residue atom -- classification depends on position
+            if position == 'middle':
+                if a['name'] == 'N':
+                    groups.append('bb_N')
+                elif i == amide_h_global:
+                    groups.append('bb_H')
+                elif a['name'] == 'C':
+                    groups.append('bb_C')
+                elif a['name'] == 'O':
+                    groups.append('bb_O')
+                else:
+                    groups.append('sidechain')
+            elif position == 'cterm':
+                # ACE-capped N-terminus is fixed; C-terminus is free
+                if a['name'] == 'N':
+                    groups.append('bb_N')
+                elif i == amide_h_global:
+                    groups.append('bb_H')
+                else:
+                    groups.append('sidechain')
+            else:  # nterm
+                # NME-capped C-terminus is fixed; N-terminus is free
+                if a['name'] == 'C':
+                    groups.append('bb_C')
+                elif a['name'] == 'O':
+                    groups.append('bb_O')
+                else:
+                    groups.append('sidechain')
 
     return groups
 
@@ -180,32 +200,33 @@ def _find_equiv(atoms, groups):
     try:
         return _find_equiv_rdkit(atoms, sc_indices)
     except ImportError:
-        print("  Warning: RDKit not found — falling back to geometry-only equivalence "
+        print("  Warning: RDKit not found -- falling back to geometry-only equivalence "
               "detection (H atoms on the same heavy atom only). Equivalent heavy atoms "
               "such as symmetric methyl groups will not be constrained. "
               "Install RDKit for full symmetry detection.")
         return _find_equiv_geom(atoms, sc_indices)
     except Exception as e:
-        print(f"  Warning: RDKit equivalence detection failed ({e}) — "
+        print(f"  Warning: RDKit equivalence detection failed ({e}) -- "
               "falling back to geometry-only detection.")
         return _find_equiv_geom(atoms, sc_indices)
 
 
 # -- resp.in -------------------------------------------------------------------
 
-def write_resp_in(capped_pdb, charge, resname, output):
+def write_resp_in(capped_pdb, charge, resname, output, position='middle'):
     """
     Write the RESP control file (resp.in).
 
     Parameters
     ----------
-    capped_pdb : str | Path  — capped PDB produced by cap.py
-    charge     : int         — net molecular charge of the capped model
-    resname    : str         — residue name used as title in the file
-    output     : str | Path  — output path (e.g. 'resp.in')
+    capped_pdb : str | Path  -- capped PDB produced by cap.py
+    charge     : int         -- net molecular charge of the capped model
+    resname    : str         -- residue name used as title in the file
+    output     : str | Path  -- output path (e.g. 'resp.in')
+    position   : str         -- 'middle', 'cterm', or 'nterm'
     """
     atoms  = parse_pdb(capped_pdb)
-    groups = _classify(atoms)
+    groups = _classify(atoms, position)
 
     sc_equiv = _find_equiv(atoms, groups)
 
@@ -239,19 +260,19 @@ def write_resp_in(capped_pdb, charge, resname, output):
     lines += ["", ""]   # two trailing blank lines required by resp
 
     Path(output).write_text('\n'.join(lines) + '\n')
-    print(f"  resp.in  : {output}  ({natoms} atoms, {n_sc} sidechain)")
+    print(f"  resp.in  : {output}  ({natoms} atoms, {n_sc} sidechain free)")
 
 
 # -- resp.qin ------------------------------------------------------------------
 
-def write_resp_qin(capped_pdb, output):
+def write_resp_qin(capped_pdb, output, position='middle'):
     """
     Write the initial charges file (resp.qin).
 
-    Fixed atoms receive their AMBER ff14SB values; free sidechain atoms get 0.0.
+    Fixed atoms receive their AMBER ff14SB values; free atoms get 0.0.
     """
     atoms  = parse_pdb(capped_pdb)
-    groups = _classify(atoms)
+    groups = _classify(atoms, position)
 
     ace_q = list(ACE_CHARGES)
     nme_q = list(NME_CHARGES)
@@ -259,13 +280,13 @@ def write_resp_qin(capped_pdb, output):
 
     charges = []
     for grp in groups:
-        if   grp == 'ace':       charges.append(ace_q[ace_i]); ace_i += 1
-        elif grp == 'nme':       charges.append(nme_q[nme_i]); nme_i += 1
-        elif grp == 'bb_N':      charges.append(BACKBONE_N_CHARGES[0])
-        elif grp == 'bb_H':      charges.append(BACKBONE_N_CHARGES[1])
-        elif grp == 'bb_C':      charges.append(BACKBONE_C_CHARGES[0])
-        elif grp == 'bb_O':      charges.append(BACKBONE_C_CHARGES[1])
-        else:                    charges.append(0.0)   # sidechain
+        if   grp == 'ace':   charges.append(ace_q[ace_i]); ace_i += 1
+        elif grp == 'nme':   charges.append(nme_q[nme_i]); nme_i += 1
+        elif grp == 'bb_N':  charges.append(BACKBONE_N_CHARGES[0])
+        elif grp == 'bb_H':  charges.append(BACKBONE_N_CHARGES[1])
+        elif grp == 'bb_C':  charges.append(BACKBONE_C_CHARGES[0])
+        elif grp == 'bb_O':  charges.append(BACKBONE_C_CHARGES[1])
+        else:                charges.append(0.0)   # sidechain / free terminal
 
     n_sc = sum(1 for g in groups if g == 'sidechain')
 

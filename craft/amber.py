@@ -2,14 +2,19 @@
 craft.amber
 Run the post-Gaussian AMBER parameterization pipeline:
 
-  espgen      – extract ESP grid from Gaussian HF log
-  resp        – fit RESP charges
-  antechamber – assign AMBER atom types and write .ac file
-  prepgen     – build residue topology (.prepin)
-  parmchk2    – generate missing force-field parameters (.frcmod)
+  espgen      - extract ESP grid from Gaussian HF log
+  resp        - fit RESP charges
+  antechamber - assign AMBER atom types and write .ac file
+  prepgen     - build residue topology (.prepin)
+  parmchk2    - generate missing force-field parameters (.frcmod)
                twice: once for GAFF, once for ff14SB
 
 All tools must be available in $PATH (i.e. AMBER or AmberTools installed).
+
+Output file names carry a position suffix for terminal variants:
+  middle : {resname}.ac, {resname}.prepin, {resname}_gaff.frcmod, ...
+  cterm  : {resname}_cterm.ac, {resname}_cterm.prepin, ...
+  nterm  : {resname}_nterm.ac, {resname}_nterm.prepin, ...
 """
 
 import os
@@ -37,14 +42,14 @@ def remap_ac_atom_names(ac_path, capped_pdb_path):
     """
     Rename atoms in an antechamber .ac file to match a capped PDB.
 
-    Builds a positional mapping (ac_name[i] → pdb_name[i]) from the order
+    Builds a positional mapping (ac_name[i] -> pdb_name[i]) from the order
     of ATOM records and applies it to all ATOM and BOND lines.  Overwrites
     ac_path in place.
 
     Parameters
     ----------
-    ac_path         : str | Path — antechamber .ac file to update
-    capped_pdb_path : str | Path — capped PDB whose atom names are the target
+    ac_path         : str | Path -- antechamber .ac file to update
+    capped_pdb_path : str | Path -- capped PDB whose atom names are the target
     """
     ac_path         = Path(ac_path)
     capped_pdb_path = Path(capped_pdb_path)
@@ -74,15 +79,12 @@ def remap_ac_atom_names(ac_path, capped_pdb_path):
         s  = line.rstrip('\n')
 
         if s.startswith('ATOM'):
-            # Groups: (ATOM + serial) | name | (resname + rest)
             m = re.match(r'^(ATOM\s+\d+)\s+(\S+)\s+(\S+\s+.*)$', s)
             if m:
                 new_name = name_map.get(m.group(2), m.group(2))
-                # Left-justify name in 4-char field; 2 spaces before name
                 s = f"{m.group(1)}  {new_name:<4}{m.group(3)}"
 
         elif s.startswith('BOND'):
-            # Groups: (BOND + indices) | name1 | (spaces) | name2 | (rest)
             m = re.match(r'^(BOND\s+\d+\s+\d+\s+\d+\s+\d+\s+)(\S+)(\s+)(\S+)(.*)$', s)
             if m:
                 new1 = name_map.get(m.group(2), m.group(2))
@@ -98,31 +100,39 @@ def remap_ac_atom_names(ac_path, capped_pdb_path):
 
 def run_amber_pipeline(hf_log, resname, charge, mc_file,
                        workdir='.', atom_type='amber', ff14sb=True,
-                       capped_pdb=None):
+                       capped_pdb=None, position='middle'):
     """
     Run the full post-Gaussian parameterization pipeline.
 
     Parameters
     ----------
-    hf_log     : str | Path — Gaussian HF/ESP log (MEO_hf.log)
-    resname    : str        — three-letter residue code (e.g. 'MEO')
-    charge     : int        — net molecular charge of the capped model
-    mc_file    : str | Path — prepgen main-chain file (.mc)
-    workdir    : str | Path — directory where all files are written (default: '.')
-    atom_type  : str        — antechamber -at flag: 'amber', 'gaff', or 'gaff2'
-    ff14sb     : bool       — also run parmchk2 with ff14SB parameters
-    capped_pdb : str | Path | None — capped PDB used to rename atoms in the .ac
-                 file after antechamber; defaults to {resname}_capped.pdb in
-                 workdir; pass None to skip renaming
+    hf_log     : str | Path -- Gaussian HF/ESP log (MEO_hf.log)
+    resname    : str        -- three-letter residue code (e.g. 'MEO')
+    charge     : int        -- net molecular charge of the capped model
+    mc_file    : str | Path -- prepgen main-chain file (.mc)
+    workdir    : str | Path -- directory where all files are written
+    atom_type  : str        -- antechamber -at flag: 'amber', 'gaff', or 'gaff2'
+    ff14sb     : bool       -- also run parmchk2 with ff14SB parameters
+    capped_pdb : str | Path | None -- capped PDB for atom name remapping;
+                 defaults to {base}_capped.pdb in workdir; pass None to skip
+    position   : str        -- 'middle', 'cterm', or 'nterm'; determines the
+                               output file name suffix
     """
+    if position not in ('middle', 'cterm', 'nterm'):
+        raise ValueError(
+            f"position must be 'middle', 'cterm', or 'nterm'; got {position!r}")
+
+    suffix = '' if position == 'middle' else f'_{position}'
+    base   = f"{resname}{suffix}"
+
     hf_log  = str(Path(hf_log).resolve())
     mc_file = str(Path(mc_file).resolve())
     wd      = str(Path(workdir).resolve())
 
-    ac_file      = f"{resname}.ac"
-    prepin_file  = f"{resname}.prepin"
-    gaff_frcmod  = f"{resname}_gaff.frcmod"
-    ff14sb_frcmod= f"{resname}_ff14SB.frcmod"
+    ac_file       = f"{base}.ac"
+    prepin_file   = f"{base}.prepin"
+    gaff_frcmod   = f"{base}_gaff.frcmod"
+    ff14sb_frcmod = f"{base}_ff14SB.frcmod"
 
     amberhome = os.environ.get('AMBERHOME', '')
     parm10    = str(Path(amberhome) / 'dat/leap/parm/parm10.dat') if amberhome else 'parm10.dat'
@@ -156,17 +166,23 @@ def run_amber_pipeline(hf_log, resname, charge, mc_file,
     ], cwd=wd)
 
     print("\n-- remap atom names -------------------------------------------------")
-    _capped = Path(capped_pdb) if capped_pdb else Path(wd) / f"{resname}_capped.pdb"
+    if capped_pdb:
+        _capped = Path(capped_pdb)
+    else:
+        _capped = Path(wd) / f"{base}_capped.pdb"
+        if not _capped.exists():
+            _capped = Path(wd) / f"{resname}_capped.pdb"
+
     if _capped.exists():
         remap_ac_atom_names(Path(wd) / ac_file, _capped)
     else:
-        print(f"  {_capped.name} not found — atom names in {ac_file} not remapped.")
+        print(f"  {_capped.name} not found -- atom names in {ac_file} not remapped.")
 
     # prepgen has a short fixed-length path buffer (~256 chars); long absolute
     # paths are silently truncated. Copy the .mc file into workdir and pass
     # only the basename to avoid this.
     mc_local = Path(mc_file).name
-    mc_dst = Path(wd) / mc_local
+    mc_dst   = Path(wd) / mc_local
     if mc_dst.resolve() != Path(mc_file).resolve():
         shutil.copy(mc_file, mc_dst)
 
@@ -205,5 +221,5 @@ def run_amber_pipeline(hf_log, resname, charge, mc_file,
     print(f"\nDone. Output files in {wd}:")
     for f in output_files:
         p = Path(wd) / f
-        status = "✓" if p.exists() else "✗ MISSING"
-        print(f"  {status}  {f}")
+        status = "ok" if p.exists() else "MISSING"
+        print(f"  [{status}]  {f}")

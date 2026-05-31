@@ -49,6 +49,9 @@ example_to_replicate/
 existing_examples/
 KME3/
 
+# Local test configuration (contains site-specific paths and credentials)
+tests_config.yaml
+
 # Docs / misc
 *.html
 message.txt

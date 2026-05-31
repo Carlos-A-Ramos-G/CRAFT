@@ -1,7 +1,7 @@
 """
 Generate a single SLURM batch script that runs the entire parameterization
-pipeline end-to-end. The script is written into <resname>/ alongside all
-other pipeline outputs.
+pipeline end-to-end. The script is written into <resname>/<position>/
+alongside all other pipeline outputs.
 
 Usage:
     python make_slurm.py              # reads config.yaml
@@ -9,8 +9,8 @@ Usage:
     python make_slurm.py my.yaml out.sh  # explicit output path
 
 After generation, submit with:
-    cd <resname>
-    sbatch <resname>_craft.sh
+    cd <resname>/<position>
+    sbatch <base>_craft.sh
 """
 
 import sys
@@ -24,15 +24,19 @@ def main():
     cfg = yaml.safe_load(Path(config_path).read_text())
 
     proj_root = Path.cwd().resolve()
-    input_pdb = cfg.get('residue', {}).get('input_pdb', '')
+    res_cfg   = cfg.get('residue', {})
+    input_pdb = res_cfg.get('input_pdb', '')
+    position  = res_cfg.get('position', 'middle')
     resname   = get_resname(input_pdb) if input_pdb else 'residue'
+    suffix    = '' if position == 'middle' else f'_{position}'
+    base      = f"{resname}{suffix}"
 
-    workdir = proj_root / resname
-    workdir.mkdir(exist_ok=True)
+    workdir = proj_root / resname / position
+    workdir.mkdir(parents=True, exist_ok=True)
 
-    output = sys.argv[2] if len(sys.argv) > 2 else str(workdir / f"{resname}_craft.sh")
+    output = sys.argv[2] if len(sys.argv) > 2 else str(workdir / f"{base}_craft.sh")
 
-    write_slurm(cfg, output, proj_root, workdir)
+    write_slurm(cfg, output, proj_root, workdir, position)
 
 
 if __name__ == '__main__':
