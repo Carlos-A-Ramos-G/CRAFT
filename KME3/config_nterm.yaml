@@ -52,7 +52,7 @@ gaussian_hf:
 # -- Phase 3: AMBER parameterization ------------------------------------------
 amber:
   atom_type: amber        # amber | gaff | gaff2  (passed to antechamber -at)
-  ff14sb_frcmod: true     # also generate ff14SB frcmod (requires $AMBERHOME)
+  forcefield: ff14SB      # ff14SB | ff19SB | ~  (~ to skip; requires $AMBERHOME)
   workdir:                # leave blank -> derived from HF log path
 
 # -- SLURM (used by make_slurm.py) --------------------------------------------

@@ -195,8 +195,9 @@ def amber():
     amb_cfg = cfg.get('amber',   {}) or {}
     cap_cfg = cfg.get('cap',     {}) or {}
 
-    charge   = args.charge if args.charge is not None else res_cfg.get('charge', 0)
-    position = res_cfg.get('position', 'middle')
+    charge      = args.charge if args.charge is not None else res_cfg.get('charge', 0)
+    position    = res_cfg.get('position', 'middle')
+    forcefield  = amb_cfg.get('forcefield', 'ff14SB')
 
     workdir = (args.workdir if args.workdir != '.'
                else (amb_cfg.get('workdir') or str(Path(args.log).resolve().parent)))
@@ -235,8 +236,8 @@ def amber():
         charge     = charge,
         mc_file    = str(mc_file),
         workdir    = workdir,
-        atom_type  = amb_cfg.get('atom_type', 'amber'),
-        ff14sb     = amb_cfg.get('ff14sb_frcmod', True),
+        atom_type   = amb_cfg.get('atom_type', 'amber'),
+        forcefield  = forcefield,
         capped_pdb = capped_pdb,
         position   = position,
     )

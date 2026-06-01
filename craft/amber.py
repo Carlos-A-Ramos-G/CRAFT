@@ -7,7 +7,7 @@ Run the post-Gaussian AMBER parameterization pipeline:
   antechamber - assign AMBER atom types and write .ac file
   prepgen     - build residue topology (.prepin)
   parmchk2    - generate missing force-field parameters (.frcmod)
-               twice: once for GAFF, once for ff14SB
+               twice: once for GAFF, once for the target protein FF
 
 All tools must be available in $PATH (i.e. AMBER or AmberTools installed).
 
@@ -98,25 +98,33 @@ def remap_ac_atom_names(ac_path, capped_pdb_path):
     return name_map
 
 
+PARM_FILES = {
+    'ff14SB': 'parm10.dat',
+    'ff19SB': 'parm19.dat',
+}
+
+
 def run_amber_pipeline(hf_log, resname, charge, mc_file,
-                       workdir='.', atom_type='amber', ff14sb=True,
+                       workdir='.', atom_type='amber', forcefield='ff14SB',
                        capped_pdb=None, position='middle'):
     """
     Run the full post-Gaussian parameterization pipeline.
 
     Parameters
     ----------
-    hf_log     : str | Path -- Gaussian HF/ESP log (MEO_hf.log)
-    resname    : str        -- three-letter residue code (e.g. 'MEO')
-    charge     : int        -- net molecular charge of the capped model
-    mc_file    : str | Path -- prepgen main-chain file (.mc)
-    workdir    : str | Path -- directory where all files are written
-    atom_type  : str        -- antechamber -at flag: 'amber', 'gaff', or 'gaff2'
-    ff14sb     : bool       -- also run parmchk2 with ff14SB parameters
-    capped_pdb : str | Path | None -- capped PDB for atom name remapping;
-                 defaults to {base}_capped.pdb in workdir; pass None to skip
-    position   : str        -- 'middle', 'cterm', or 'nterm'; determines the
-                               output file name prefix (C/N/none)
+    hf_log      : str | Path -- Gaussian HF/ESP log (MEO_hf.log)
+    resname     : str        -- three-letter residue code (e.g. 'MEO')
+    charge      : int        -- net molecular charge of the capped model
+    mc_file     : str | Path -- prepgen main-chain file (.mc)
+    workdir     : str | Path -- directory where all files are written
+    atom_type   : str        -- antechamber -at flag: 'amber', 'gaff', or 'gaff2'
+    forcefield  : str | None -- protein FF for the second parmchk2 run:
+                                'ff14SB' (parm10.dat), 'ff19SB' (parm19.dat),
+                                or None to skip
+    capped_pdb  : str | Path | None -- capped PDB for atom name remapping;
+                  defaults to {base}_capped.pdb in workdir; pass None to skip
+    position    : str        -- 'middle', 'cterm', or 'nterm'; determines the
+                                output file name prefix (C/N/none)
     """
     if position not in ('middle', 'cterm', 'nterm'):
         raise ValueError(
@@ -129,13 +137,20 @@ def run_amber_pipeline(hf_log, resname, charge, mc_file,
     mc_file = str(Path(mc_file).resolve())
     wd      = str(Path(workdir).resolve())
 
-    ac_file       = f"{base}.ac"
-    prepin_file   = f"{base}.prepin"
-    gaff_frcmod   = f"{base}_gaff.frcmod"
-    ff14sb_frcmod = f"{base}_ff14SB.frcmod"
+    ac_file     = f"{base}.ac"
+    prepin_file = f"{base}.prepin"
+    gaff_frcmod = f"{base}_gaff.frcmod"
+    ff_frcmod   = f"{base}_{forcefield}.frcmod" if forcefield else None
 
     amberhome = os.environ.get('AMBERHOME', '')
-    parm10    = str(Path(amberhome) / 'dat/leap/parm/parm10.dat') if amberhome else 'parm10.dat'
+    if forcefield:
+        parm_name = PARM_FILES.get(forcefield)
+        if parm_name is None:
+            raise ValueError(
+                f"Unknown forcefield {forcefield!r}. "
+                f"Supported: {list(PARM_FILES)}"
+            )
+        parm_file = str(Path(amberhome) / 'dat/leap/parm' / parm_name) if amberhome else parm_name
 
     print("\n-- espgen ------------------------------------------------------------")
     _run(['espgen', '-i', hf_log, '-o', 'esp.dat'], cwd=wd)
@@ -203,20 +218,20 @@ def run_amber_pipeline(hf_log, resname, charge, mc_file,
         '-o', gaff_frcmod,
     ], cwd=wd)
 
-    if ff14sb:
-        print("\n-- parmchk2 (ff14SB) -------------------------------------------------")
+    if forcefield:
+        print(f"\n-- parmchk2 ({forcefield}) {'-' * (51 - len(forcefield))}")
         _run([
             'parmchk2',
             '-i', ac_file,
             '-f', 'ac',
-            '-o', ff14sb_frcmod,
+            '-o', ff_frcmod,
             '-a', 'Y',
-            '-p', parm10,
+            '-p', parm_file,
         ], cwd=wd)
 
     output_files = [ac_file, prepin_file, gaff_frcmod]
-    if ff14sb:
-        output_files.append(ff14sb_frcmod)
+    if forcefield:
+        output_files.append(ff_frcmod)
 
     print(f"\nDone. Output files in {wd}:")
     for f in output_files:

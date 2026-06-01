@@ -8,7 +8,7 @@ CRAFT automates the parameterization of non-standard amino acid residues for AMB
 
 ## Overview
 
-Given a single-residue PDB file, CRAFT produces the `.prepin` topology and `.frcmod` force-field parameter files needed to simulate the residue in AMBER, using AMBER's standard ff14SB backbone charges and RESP-fitted sidechain charges.
+Given a single-residue PDB file, CRAFT produces the `.prepin` topology and `.frcmod` force-field parameter files needed to simulate the residue in AMBER, using AMBER's standard backbone charges and RESP-fitted sidechain charges. Both ff14SB and ff19SB are supported.
 
 Three terminal positions are supported:
 
@@ -42,9 +42,9 @@ Gaussian HF/6-31G(d) single-point (ESP)
 espgen -> resp -> antechamber -> prepgen -> parmchk2
   |
   v
-<resname>/<position>/<base>.prepin        -- residue topology
-<resname>/<position>/<base>_gaff.frcmod  -- GAFF missing parameters
-<resname>/<position>/<base>_ff14SB.frcmod -- ff14SB missing parameters
+<resname>/<position>/<base>.prepin              -- residue topology
+<resname>/<position>/<base>_gaff.frcmod        -- GAFF missing parameters
+<resname>/<position>/<base>_{forcefield}.frcmod -- FF-specific missing parameters
 ```
 
 Where `<base>` is `<resname>` for `middle`, `<resname>_cterm` for `cterm`, and `<resname>_nterm` for `nterm`.
@@ -192,7 +192,7 @@ gaussian_hf:
 
 amber:
   atom_type: amber            # amber | gaff | gaff2
-  ff14sb_frcmod: true         # generate ff14SB frcmod (requires $AMBERHOME)
+  forcefield: ff14SB          # ff14SB | ff19SB | ~ (~ to skip; requires $AMBERHOME)
   workdir:                    # leave blank -> derived from HF log path
 
 slurm:
@@ -233,13 +233,13 @@ craft/
 
 Fixed and free atoms depend on the terminal position:
 
-| Position | Fixed (ff14SB values) | Free (RESP-fitted) |
+| Position | Fixed (ff14SB/ff19SB values) | Free (RESP-fitted) |
 |---|---|---|
 | `middle` | ACE + backbone N, H, CA, HA, C, O + NME | sidechain |
 | `cterm` | ACE + backbone N, H, CA, HA | sidechain + C-terminal C, O, OXT |
 | `nterm` | NME + backbone CA, HA, C, O | sidechain + N-terminal N, H atoms |
 
-CA and HA are fixed such that the six backbone atoms sum to exactly zero net charge (N−0.4157 + H+0.2719 + CA+0.0337 + HA+0.0808 + C+0.5972 + O−0.5679 = 0.0000), preventing charge transfer artifacts at QM/MM boundaries. For glycine the +0.0808 HA charge is split equally between HA2 and HA3; for α-substituted residues with no alpha-H it is folded onto CA.
+ff14SB and ff19SB share identical backbone charges (N−0.4157, H+0.2719, CA+0.0337, HA+0.0823, C+0.5973, O−0.5679), so the same fixed constraints apply to both. The HA charge is adjusted by −0.0015 to make the six backbone atoms sum to exactly zero, preventing charge transfer artifacts at QM/MM boundaries. For glycine the HA charge is split equally between HA2 and HA3; for α-substituted residues with no alpha-H it is folded onto CA. The `forcefield` setting only affects which parm file is passed to `parmchk2` for the FF-specific `.frcmod`.
 
 Symmetry-equivalent sidechain atoms (e.g. the three NZ-methyl carbons of trimethyllysine) are constrained equal using RDKit canonical Morgan ranking. Without RDKit, only H atoms bonded to the same heavy atom are constrained (a warning is printed).
 
