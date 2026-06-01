@@ -235,9 +235,11 @@ Fixed and free atoms depend on the terminal position:
 
 | Position | Fixed (ff14SB values) | Free (RESP-fitted) |
 |---|---|---|
-| `middle` | ACE + backbone N, H, C, O + NME | sidechain |
-| `cterm` | ACE + backbone N, H | sidechain + C-terminal C, O, OXT |
-| `nterm` | NME + backbone C, O | sidechain + N-terminal N, H atoms |
+| `middle` | ACE + backbone N, H, CA, HA, C, O + NME | sidechain |
+| `cterm` | ACE + backbone N, H, CA, HA | sidechain + C-terminal C, O, OXT |
+| `nterm` | NME + backbone CA, HA, C, O | sidechain + N-terminal N, H atoms |
+
+CA and HA are fixed such that the six backbone atoms sum to exactly zero net charge (N−0.4157 + H+0.2719 + CA+0.0337 + HA+0.0808 + C+0.5972 + O−0.5679 = 0.0000), preventing charge transfer artifacts at QM/MM boundaries. For glycine the +0.0808 HA charge is split equally between HA2 and HA3; for α-substituted residues with no alpha-H it is folded onto CA.
 
 Symmetry-equivalent sidechain atoms (e.g. the three NZ-methyl carbons of trimethyllysine) are constrained equal using RDKit canonical Morgan ranking. Without RDKit, only H atoms bonded to the same heavy atom are constrained (a warning is printed).
 

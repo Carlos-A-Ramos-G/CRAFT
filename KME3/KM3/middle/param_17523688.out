@@ -1,0 +1,115 @@
+[08:50:14] Phase 1 -- craft-run
+============================================================
+Step 1 -- Cap termini  [middle]
+============================================================
+Input : KME3.pdb  (34 atoms, residue KM3)
+  N-terminus : NH3+ -- zwitterionic free amino acid
+  C-terminus : COO- -- has O1 (1 extra O), free amino acid C-terminus
+  Position   : middle
+  Action     : remove 3 H(s) on N, add amide-H, remove O1, add ACE + NME
+Output: KM3/middle/KM3_capped.pdb
+  ACE  resSeq=1 :  6 atoms
+  KM3  resSeq=2 : 31 atoms
+  NME  resSeq=3 :  6 atoms
+  Total         : 43 atoms
+
+============================================================
+Step 2 -- Geometry-optimisation Gaussian input
+============================================================
+Input  : KM3/middle/KM3_capped.pdb  (43 atoms)
+Output : KM3/middle/KM3_opt.com
+  Charge / mult : 1 / 1
+  nproc / mem   : 16 / 512MB
+
+============================================================
+Steps 3-5 -- RESP and prepgen inputs
+============================================================
+  resp.in  : KM3/middle/resp.in  (43 atoms, 27 sidechain free)
+  resp.qin : KM3/middle/resp.qin  (43 charges, 27 sidechain free)
+  KM3.mc          : HEAD=N CA=CA TAIL=C omit 12 cap atoms
+
+All Phase 1 outputs written to: KM3/middle/
+
+Next steps:
+  1. Submit KM3/middle/KM3_opt.com to HPC
+  2. Copy KM3_opt.log into KM3/middle/, then:
+       craft-hf-input KM3/middle/KM3_opt.log
+  3. Submit KM3/middle/KM3_hf.com to HPC
+  4. Copy KM3_hf.log into KM3/middle/, then:
+       craft-amber KM3/middle/KM3_hf.log
+
+  Residue 'KM3'  position 'middle'  read from KME3.pdb
+[08:50:15] Phase 2a -- geometry optimisation (KM3_opt.com)
+[09:19:39] Phase 2b -- craft-hf-input
+Parsing optimised geometry from KM3/middle/KM3_opt.log ...
+  Found 43 atoms in final Standard orientation block
+Writing HF/6-31G(d) single-point input ...
+Output : KM3/middle/KM3_hf.com
+  Charge / mult : 1 / 1
+  nproc / mem   : 16 / 512MB
+  Atoms         : 43
+[09:19:39] Phase 2c -- HF single-point (KM3_hf.com)
+[09:19:54] Phase 3 -- craft-amber
+Residue  : KM3  (charge +1)
+Position : middle
+Log      : KM3/middle/KM3_hf.log
+MC file  : KM3/middle/KM3.mc
+
+
+-- espgen ------------------------------------------------------------
+  $ espgen -i KM3/middle/KM3_hf.log -o esp.dat
+
+
+-- resp --------------------------------------------------------------
+  $ resp -O -i resp.in -o resp.out -p resp.pch -t resp.chg -q resp.qin -e esp.dat
+
+-- antechamber -------------------------------------------------------
+  $ antechamber -fi gout -i KM3/middle/KM3_hf.log -bk KM3 -fo ac -o KM3.ac -c rc -cf resp.chg -at amber -nc 1
+Info: acdoctor mode is on: check and diagnose problems in the input file.
+Info: The atom type is set to amber; the options available to the -at flag are
+      gaff, gaff2, amber, bcc, abcg2, and sybyl.
+
+-- Check Format for Gaussian Output File --
+   Status: pass
+
+-- remap atom names -------------------------------------------------
+  Remapped 43 atom names in KM3.ac
+
+-- prepgen -----------------------------------------------------------
+  $ prepgen -i KM3.ac -o KM3.prepin -m KM3.mc -rn KM3
+
+PRE_HEAD_TYPE is     C
+POST_TAIL_TYPE is     N
+Net charge of truncated molecule is     1.00
+HEAD_ATOM      7    N
+TAIL_ATOM     10    C
+MAIN_CHAIN     1    7    N
+MAIN_CHAIN     2    9   CA
+MAIN_CHAIN     3   10    C
+OMIT_ATOM      1    1  CH3
+OMIT_ATOM      2    2  H11
+OMIT_ATOM      3    3  H21
+OMIT_ATOM      4    4  H31
+OMIT_ATOM      5    5   C4
+OMIT_ATOM      6    6   O1
+OMIT_ATOM      7   38   N1
+OMIT_ATOM      8   39  H10
+OMIT_ATOM      9   40   C5
+OMIT_ATOM     10   41  H12
+OMIT_ATOM     11   42  H22
+OMIT_ATOM     12   43  H32
+Number of mainchain atoms (including head and tail atom):     3
+Number of omited atoms:    12
+
+-- parmchk2 (GAFF) ---------------------------------------------------
+  $ parmchk2 -i KM3.ac -f ac -o KM3_gaff.frcmod
+
+-- parmchk2 (ff14SB) -------------------------------------------------
+  $ parmchk2 -i KM3.ac -f ac -o KM3_ff14SB.frcmod -a Y -p $AMBERHOME/dat/leap/parm/parm10.dat
+
+Done. Output files in KM3/middle:
+  [ok]  KM3.ac
+  [ok]  KM3.prepin
+  [ok]  KM3_gaff.frcmod
+  [ok]  KM3_ff14SB.frcmod
+[09:19:55] Done. Output files in KM3/middle

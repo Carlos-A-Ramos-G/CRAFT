@@ -52,7 +52,6 @@ scratch/
 # Example / reference directories
 example_to_replicate/
 existing_examples/
-KME3/
 
 # Local test configuration (contains site-specific paths and credentials)
 tests_config.yaml
@@ -60,3 +59,11 @@ tests_config.yaml
 # Docs / misc
 *.html
 message.txt
+
+# Personal / local files
+algo.sh
+workflow_diagram.svg
+
+# Un-ignore everything inside the KME3 worked example
+!KME3/
+!KME3/**

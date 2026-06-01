@@ -18,13 +18,20 @@ import sys
 
 def run():
     """Cap termini and generate all pre-Gaussian inputs."""
+    import argparse
     import yaml
     from pathlib import Path
     from craft import cap, get_resname, write_com, write_resp_in, write_resp_qin, write_mc
     from craft.gaussian import NPROC_DEFAULT, MEM_DEFAULT, ROUTE_DEFAULT
 
-    cfg_path = sys.argv[1] if len(sys.argv) > 1 else 'config.yaml'
-    with open(cfg_path) as f:
+    parser = argparse.ArgumentParser(
+        description="Cap termini and generate all pre-Gaussian inputs (Phase 1)",
+    )
+    parser.add_argument('--config', default='config.yaml',
+                        help='Config file (default: config.yaml)')
+    args = parser.parse_args()
+
+    with open(args.config) as f:
         cfg = yaml.safe_load(f)
 
     res       = cfg['residue']
@@ -241,11 +248,19 @@ def amber():
 
 def slurm():
     """Generate a SLURM batch script for the full pipeline."""
+    import argparse
     import yaml
     from pathlib import Path
     from craft import write_slurm, get_resname
 
-    config_path = Path(sys.argv[1] if len(sys.argv) > 1 else 'config.yaml').resolve()
+    parser = argparse.ArgumentParser(
+        description="Generate a SLURM batch script for the full pipeline",
+    )
+    parser.add_argument('--config', default='config.yaml',
+                        help='Config file (default: config.yaml)')
+    args = parser.parse_args()
+
+    config_path = Path(args.config).resolve()
     cfg = yaml.safe_load(open(config_path))
 
     proj_root = Path.cwd().resolve()
@@ -259,7 +274,7 @@ def slurm():
     workdir = proj_root / resname / position
     workdir.mkdir(parents=True, exist_ok=True)
 
-    output = sys.argv[2] if len(sys.argv) > 2 else str(workdir / f"{base}_craft.sh")
+    output = str(workdir / f"{base}_craft.sh")
 
     write_slurm(cfg, output, proj_root, workdir, position, config_path=config_path)
 

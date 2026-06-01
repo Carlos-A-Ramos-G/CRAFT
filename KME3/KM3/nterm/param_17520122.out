@@ -1,0 +1,107 @@
+[21:38:52] Phase 1 -- craft-run
+============================================================
+Step 1 -- Cap termini  [nterm]
+============================================================
+Input : KME3.pdb  (34 atoms, residue KM3)
+  N-terminus : NH3+ -- zwitterionic free amino acid
+  C-terminus : COO- -- has O1 (1 extra O), free amino acid C-terminus
+  Position   : nterm
+  Action     : N-terminus left free (no ACE), remove O1, add NME (N-terminus free)
+Output: KM3/nterm/KM3_nterm_capped.pdb
+  KM3  resSeq=2 : 33 atoms
+  NME  resSeq=3 :  6 atoms
+  Total         : 39 atoms
+
+============================================================
+Step 2 -- Geometry-optimisation Gaussian input
+============================================================
+Input  : KM3/nterm/KM3_nterm_capped.pdb  (39 atoms)
+Output : KM3/nterm/KM3_nterm_opt.com
+  Charge / mult : 2 / 1
+  Checkpoint    : KM3_nterm_opt.chk
+  nproc / mem   : 16 / 512MB
+
+============================================================
+Steps 3-5 -- RESP and prepgen inputs
+============================================================
+  resp.in  : KM3/nterm/resp.in  (39 atoms, 31 sidechain free)
+  resp.qin : KM3/nterm/resp.qin  (39 charges, 31 sidechain free)
+  KM3_nterm.mc    : CA=CA TAIL=C omit 6 cap atoms
+
+All Phase 1 outputs written to: KM3/nterm/
+
+Next steps:
+  1. Submit KM3/nterm/KM3_nterm_opt.com to HPC
+  2. Copy KM3_nterm_opt.log into KM3/nterm/, then:
+       craft-hf-input KM3/nterm/KM3_nterm_opt.log
+  3. Submit KM3/nterm/KM3_nterm_hf.com to HPC
+  4. Copy KM3_nterm_hf.log into KM3/nterm/, then:
+       craft-amber KM3/nterm/KM3_nterm_hf.log
+
+  Residue 'KM3'  position 'nterm'  read from KME3.pdb
+[21:38:52] Phase 2a -- geometry optimisation (KM3_nterm_opt.com)
+[21:50:00] Phase 2b -- craft-hf-input
+Parsing optimised geometry from KM3/nterm/KM3_nterm_opt.log ...
+  Found 39 atoms in final Standard orientation block
+Writing HF/6-31G(d) single-point input ...
+Output : KM3/nterm/KM3_nterm_hf.com
+  Charge / mult : 2 / 1
+  Checkpoint    : KM3_nterm_hf.chk
+  nproc / mem   : 16 / 512MB
+  Atoms         : 39
+[21:50:00] Phase 2c -- HF single-point (KM3_nterm_hf.com)
+[21:50:09] Phase 3 -- craft-amber
+Residue  : KM3  (charge +2)
+Position : nterm
+Log      : KM3/nterm/KM3_nterm_hf.log
+MC file  : KM3/nterm/KM3_nterm.mc
+
+
+-- espgen ------------------------------------------------------------
+  $ espgen -i KM3/nterm/KM3_nterm_hf.log -o esp.dat
+
+
+-- resp --------------------------------------------------------------
+  $ resp -O -i resp.in -o resp.out -p resp.pch -t resp.chg -q resp.qin -e esp.dat
+
+-- antechamber -------------------------------------------------------
+  $ antechamber -fi gout -i KM3/nterm/KM3_nterm_hf.log -bk KM3 -fo ac -o KM3_nterm.ac -c rc -cf resp.chg -at amber -nc 2
+Info: acdoctor mode is on: check and diagnose problems in the input file.
+Info: The atom type is set to amber; the options available to the -at flag are
+      gaff, gaff2, amber, bcc, abcg2, and sybyl.
+
+-- Check Format for Gaussian Output File --
+   Status: pass
+
+-- remap atom names -------------------------------------------------
+  Remapped 39 atom names in KM3_nterm.ac
+
+-- prepgen -----------------------------------------------------------
+  $ prepgen -i KM3_nterm.ac -o KM3_nterm.prepin -m KM3_nterm.mc -rn KM3
+
+POST_TAIL_TYPE is     N
+Net charge of truncated molecule is     2.00
+TAIL_ATOM      3    C
+MAIN_CHAIN     1    2   CA
+MAIN_CHAIN     2    3    C
+OMIT_ATOM      1   34   N1
+OMIT_ATOM      2   35  H10
+OMIT_ATOM      3   36   C4
+OMIT_ATOM      4   37  H11
+OMIT_ATOM      5   38  H21
+OMIT_ATOM      6   39  H31
+Number of mainchain atoms (including head and tail atom):     2
+Number of omited atoms:     6
+
+-- parmchk2 (GAFF) ---------------------------------------------------
+  $ parmchk2 -i KM3_nterm.ac -f ac -o KM3_nterm_gaff.frcmod
+
+-- parmchk2 (ff14SB) -------------------------------------------------
+  $ parmchk2 -i KM3_nterm.ac -f ac -o KM3_nterm_ff14SB.frcmod -a Y -p $AMBERHOME/dat/leap/parm/parm10.dat
+
+Done. Output files in KM3/nterm:
+  [ok]  KM3_nterm.ac
+  [ok]  KM3_nterm.prepin
+  [ok]  KM3_nterm_gaff.frcmod
+  [ok]  KM3_nterm_ff14SB.frcmod
+[21:50:09] Done. Output files in KM3/nterm

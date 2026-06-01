@@ -5,12 +5,18 @@ Generate RESP charge-fitting input files (resp.in and resp.qin).
 Constraints follow the standard AMBER RESP protocol adapted for each
 terminal position:
 
-  middle : fix ACE + backbone N/H/C/O + NME; sidechain atoms free
-  cterm  : fix ACE + backbone N/H; C-terminal C/O/OXT and sidechain free
-  nterm  : fix NME + backbone C/O; N-terminal N/H atoms and sidechain free
+  middle : fix ACE + backbone N/H/CA/HA/C/O + NME; sidechain atoms free
+  cterm  : fix ACE + backbone N/H/CA/HA; C-terminal C/O/OXT and sidechain free
+  nterm  : fix NME + backbone CA/HA/C/O; N-terminal N/H atoms and sidechain free
 
-Backbone atoms are identified by exact name ('N', 'H', 'C', 'O') for the
-fixed end, and by residue sequence number for cap atoms.
+CA and HA are fixed such that the six backbone atoms (N, H, CA, HA, C, O)
+sum to exactly zero net charge, which prevents charge transfer artifacts at
+QM/MM boundaries.  Alpha-H atoms are detected geometrically (distance to CA
+< 1.15 Å) so the correct number is found automatically for glycine (two) or
+alpha-substituted residues with no alpha-H.
+
+Backbone atoms are identified by exact name ('N', 'H', 'CA', 'C', 'O') for
+the fixed end, and by residue sequence number for cap atoms.
 
 Reference: Bayly et al., J. Phys. Chem. 97, 10269 (1993).
 """
@@ -30,7 +36,12 @@ from .cap import parse_pdb, _elem
 
 ACE_CHARGES        = [-0.3662,  0.1123,  0.1123,  0.1123,  0.5972, -0.5679]
 BACKBONE_N_CHARGES = [-0.4157,  0.2719]   # backbone N, amide H
-BACKBONE_C_CHARGES = [ 0.5972, -0.5679]   # backbone C (carbonyl), O
+BACKBONE_CA_CHARGE =  0.0337             # alpha carbon (ff14SB)
+BACKBONE_HA_TOTAL  =  0.0808             # total alpha-H charge, split equally
+                                         # among all H bonded to CA; 0.0015
+                                         # below ff14SB (0.0823) so that
+                                         # N+H+CA+HA+C+O = 0.0000 exactly
+BACKBONE_C_CHARGES = [ 0.5972, -0.5679]  # backbone C (carbonyl), O
 NME_CHARGES        = [-0.4157,  0.2719, -0.1490,  0.0976,  0.0976,  0.0976]
 
 ATOMIC_NUMBERS = {
@@ -44,19 +55,35 @@ ATOMIC_NUMBERS = {
 def _classify(atoms, position='middle'):
     """
     Classify every atom as one of:
-      'ace' | 'bb_N' | 'bb_H' | 'sidechain' | 'bb_C' | 'bb_O' | 'nme'
+      'ace' | 'bb_N' | 'bb_H' | 'bb_CA' | 'bb_HA' |
+      'sidechain' | 'bb_C' | 'bb_O' | 'nme'
 
-    Which backbone atoms are fixed depends on position:
-      middle : N, H(amide), C, O all fixed
-      cterm  : only N and H(amide) fixed (C-terminus is free)
-      nterm  : only C and O fixed (N-terminus is free)
+    CA and alpha-H atoms are always fixed regardless of position so that the
+    six backbone atoms (N, H, CA, HA, C, O) sum to exactly zero net charge.
+    Alpha-H atoms are detected geometrically (H in resSeq=2 within 1.15 Å of
+    CA), which handles glycine (two alpha-H) and alpha-substituted residues
+    with no alpha-H without special cases.
+
+    Which other backbone atoms are fixed depends on position:
+      middle : N, H(amide), CA, HA, C, O all fixed
+      cterm  : N, H(amide), CA, HA fixed; C-terminus (C, O, OXT) free
+      nterm  : CA, HA, C, O fixed; N-terminus (N and its H atoms) free
 
     The amide H is identified as the second residue atom in the output PDB
     (cap.py always writes N then the amide H for middle/cterm modes).
-    For nterm, no amide H is injected, so this index is never used as bb_H.
     """
     res_indices    = [i for i, a in enumerate(atoms) if a['resSeq'] == 2]
     amide_h_global = res_indices[1]   # only meaningful for middle and cterm
+
+    # Detect alpha-H: H in resSeq=2 within 1.15 Å of CA
+    ca_atom = next((a for a in atoms if a['resSeq'] == 2 and a['name'] == 'CA'), None)
+    alpha_h_indices = set()
+    if ca_atom is not None:
+        ca_pos = _pos(ca_atom)
+        for i, a in enumerate(atoms):
+            if a['resSeq'] == 2 and _elem(a['name']) == 'H':
+                if np.linalg.norm(_pos(a) - ca_pos) < 1.15:
+                    alpha_h_indices.add(i)
 
     groups = []
     for i, a in enumerate(atoms):
@@ -71,6 +98,10 @@ def _classify(atoms, position='middle'):
                     groups.append('bb_N')
                 elif i == amide_h_global:
                     groups.append('bb_H')
+                elif a['name'] == 'CA':
+                    groups.append('bb_CA')
+                elif i in alpha_h_indices:
+                    groups.append('bb_HA')
                 elif a['name'] == 'C':
                     groups.append('bb_C')
                 elif a['name'] == 'O':
@@ -83,11 +114,19 @@ def _classify(atoms, position='middle'):
                     groups.append('bb_N')
                 elif i == amide_h_global:
                     groups.append('bb_H')
+                elif a['name'] == 'CA':
+                    groups.append('bb_CA')
+                elif i in alpha_h_indices:
+                    groups.append('bb_HA')
                 else:
                     groups.append('sidechain')
             else:  # nterm
                 # NME-capped C-terminus is fixed; N-terminus is free
-                if a['name'] == 'C':
+                if a['name'] == 'CA':
+                    groups.append('bb_CA')
+                elif i in alpha_h_indices:
+                    groups.append('bb_HA')
+                elif a['name'] == 'C':
                     groups.append('bb_C')
                 elif a['name'] == 'O':
                     groups.append('bb_O')
@@ -274,6 +313,12 @@ def write_resp_qin(capped_pdb, output, position='middle'):
     atoms  = parse_pdb(capped_pdb)
     groups = _classify(atoms, position)
 
+    # Per-HA charge: split BACKBONE_HA_TOTAL equally; if no alpha-H exists
+    # (e.g. alpha-substituted residues), fold the full amount onto CA.
+    n_bb_ha  = groups.count('bb_HA')
+    ca_charge = BACKBONE_CA_CHARGE + (BACKBONE_HA_TOTAL if n_bb_ha == 0 else 0.0)
+    ha_charge = BACKBONE_HA_TOTAL / n_bb_ha if n_bb_ha > 0 else 0.0
+
     ace_q = list(ACE_CHARGES)
     nme_q = list(NME_CHARGES)
     ace_i = nme_i = 0
@@ -284,6 +329,8 @@ def write_resp_qin(capped_pdb, output, position='middle'):
         elif grp == 'nme':   charges.append(nme_q[nme_i]); nme_i += 1
         elif grp == 'bb_N':  charges.append(BACKBONE_N_CHARGES[0])
         elif grp == 'bb_H':  charges.append(BACKBONE_N_CHARGES[1])
+        elif grp == 'bb_CA': charges.append(ca_charge)
+        elif grp == 'bb_HA': charges.append(ha_charge)
         elif grp == 'bb_C':  charges.append(BACKBONE_C_CHARGES[0])
         elif grp == 'bb_O':  charges.append(BACKBONE_C_CHARGES[1])
         else:                charges.append(0.0)   # sidechain / free terminal
