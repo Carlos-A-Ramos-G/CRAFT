@@ -38,8 +38,8 @@ def run():
         sys.exit(f"Error: residue.position must be 'middle', 'cterm', or 'nterm'; "
                  f"got {position!r}")
 
-    suffix = '' if position == 'middle' else f'_{position}'
-    base   = f"{resname}{suffix}"
+    prefix = {'middle': '', 'cterm': 'C', 'nterm': 'N'}[position]
+    base   = f"{prefix}{resname}"
 
     workdir = Path(resname) / position
     workdir.mkdir(parents=True, exist_ok=True)
@@ -104,7 +104,6 @@ def hf_input():
     from craft.gaussian import NPROC_DEFAULT, MEM_DEFAULT
 
     parser = argparse.ArgumentParser(
-        prog='craft-hf-input',
         description="Gaussian opt log -> HF/6-31G(d) single-point .com",
     )
     parser.add_argument('log',            help='Gaussian optimisation log (e.g. KME3_opt.log)')
@@ -137,12 +136,16 @@ def hf_input():
         resname = get_resname(res_cfg['input_pdb'])
     else:
         stem = log_path.stem
-        for tag in ('_opt', '_hf', '_cterm', '_nterm'):
+        for tag in ('_opt', '_hf'):
             stem = stem.replace(tag, '')
+        if position == 'nterm' and stem.startswith('N'):
+            stem = stem[1:]
+        elif position == 'cterm' and stem.startswith('C'):
+            stem = stem[1:]
         resname = stem
 
-    suffix   = '' if position == 'middle' else f'_{position}'
-    base     = f"{resname}{suffix}"
+    prefix   = {'middle': '', 'cterm': 'C', 'nterm': 'N'}[position]
+    base     = f"{prefix}{resname}"
     com_path = args.com or str(workdir / f"{base}_hf.com")
 
     print(f"Parsing optimised geometry from {args.log} ...")
@@ -167,7 +170,6 @@ def amber():
     from craft import run_amber_pipeline, get_resname
 
     parser = argparse.ArgumentParser(
-        prog='craft-amber',
         description="Run AMBER parameterization pipeline from Gaussian HF log",
     )
     parser.add_argument('log',             help='Gaussian HF/ESP log')
@@ -188,7 +190,6 @@ def amber():
 
     charge   = args.charge if args.charge is not None else res_cfg.get('charge', 0)
     position = res_cfg.get('position', 'middle')
-    suffix   = '' if position == 'middle' else f'_{position}'
 
     workdir = (args.workdir if args.workdir != '.'
                else (amb_cfg.get('workdir') or str(Path(args.log).resolve().parent)))
@@ -199,11 +200,17 @@ def amber():
         resname = get_resname(res_cfg['input_pdb'])
     else:
         stem = Path(args.log).stem
-        for tag in ('_hf', '_opt', '_cterm', '_nterm'):
+        for tag in ('_hf', '_opt'):
             stem = stem.replace(tag, '')
+        if position == 'nterm' and stem.startswith('N'):
+            stem = stem[1:]
+        elif position == 'cterm' and stem.startswith('C'):
+            stem = stem[1:]
         resname = stem
 
-    mc_file = Path(workdir) / f"{resname}{suffix}.mc"
+    prefix  = {'middle': '', 'cterm': 'C', 'nterm': 'N'}[position]
+    base    = f"{prefix}{resname}"
+    mc_file = Path(workdir) / f"{base}.mc"
     if not mc_file.exists():
         sys.exit(f"Error: {mc_file} not found -- run 'craft-run' first.")
 
@@ -246,8 +253,8 @@ def slurm():
     input_pdb = res_cfg.get('input_pdb', '')
     position  = res_cfg.get('position', 'middle')
     resname   = get_resname(input_pdb) if input_pdb else 'residue'
-    suffix    = '' if position == 'middle' else f'_{position}'
-    base      = f"{resname}{suffix}"
+    prefix    = {'middle': '', 'cterm': 'C', 'nterm': 'N'}[position]
+    base      = f"{prefix}{resname}"
 
     workdir = proj_root / resname / position
     workdir.mkdir(parents=True, exist_ok=True)

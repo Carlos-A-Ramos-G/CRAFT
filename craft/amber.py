@@ -11,10 +11,10 @@ Run the post-Gaussian AMBER parameterization pipeline:
 
 All tools must be available in $PATH (i.e. AMBER or AmberTools installed).
 
-Output file names carry a position suffix for terminal variants:
+Output file names carry a position prefix for terminal variants:
   middle : {resname}.ac, {resname}.prepin, {resname}_gaff.frcmod, ...
-  cterm  : {resname}_cterm.ac, {resname}_cterm.prepin, ...
-  nterm  : {resname}_nterm.ac, {resname}_nterm.prepin, ...
+  cterm  : C{resname}.ac, C{resname}.prepin, C{resname}_gaff.frcmod, ...
+  nterm  : N{resname}.ac, N{resname}.prepin, N{resname}_gaff.frcmod, ...
 """
 
 import os
@@ -116,14 +116,14 @@ def run_amber_pipeline(hf_log, resname, charge, mc_file,
     capped_pdb : str | Path | None -- capped PDB for atom name remapping;
                  defaults to {base}_capped.pdb in workdir; pass None to skip
     position   : str        -- 'middle', 'cterm', or 'nterm'; determines the
-                               output file name suffix
+                               output file name prefix (C/N/none)
     """
     if position not in ('middle', 'cterm', 'nterm'):
         raise ValueError(
             f"position must be 'middle', 'cterm', or 'nterm'; got {position!r}")
 
-    suffix = '' if position == 'middle' else f'_{position}'
-    base   = f"{resname}{suffix}"
+    prefix = {'middle': '', 'cterm': 'C', 'nterm': 'N'}[position]
+    base   = f"{prefix}{resname}"
 
     hf_log  = str(Path(hf_log).resolve())
     mc_file = str(Path(mc_file).resolve())

@@ -3,6 +3,11 @@ __pycache__/
 *.py[cod]
 *.pyo
 
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
 # Generated pipeline files
 *_capped.pdb
 *_opt.com

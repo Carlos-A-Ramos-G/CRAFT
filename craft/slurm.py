@@ -80,8 +80,8 @@ def write_slurm(cfg, output, proj_root, workdir, position='middle', config_path=
 
     input_pdb = res_cfg.get('input_pdb', '')
     resname   = get_resname(input_pdb) if input_pdb else Path(input_pdb or 'residue.pdb').stem
-    suffix    = '' if position == 'middle' else f'_{position}'
-    base      = f"{resname}{suffix}"
+    prefix    = {'middle': '', 'cterm': 'C', 'nterm': 'N'}[position]
+    base      = f"{prefix}{resname}"
     job_name  = sl.get('job_name') or f"{base}_craft"
 
     opt_com  = Path(g_opt.get('output_com') or f"{base}_opt.com").name

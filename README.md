@@ -15,8 +15,8 @@ Three terminal positions are supported:
 | `position` | Capping | Use case |
 |---|---|---|
 | `middle` | ACE---residue---NME | Interior position in a peptide chain |
-| `cterm` | ACE---residue | C-terminal residue |
-| `nterm` | residue---NME | N-terminal residue |
+| `cterm`  | ACE---residue       | C-terminal residue |
+| `nterm`  |       residue---NME | N-terminal residue |
 
 Each variant is parameterized independently and written to its own subdirectory (`<resname>/<position>/`).
 

@@ -5,9 +5,6 @@ Generate Gaussian input files (.com) from capped PDB or optimised log.
 Two flavours:
   write_com      – geometry optimisation (B3LYP/6-31G*, from capped PDB)
   write_hf_com   – HF/6-31G(d) single-point ESP (from opt log geometry)
-
-The checkpoint name is derived from the PDB stem by stripping a trailing
-'_capped' suffix, e.g. MEO_capped.pdb → MEO_opt.chk / MEO_opt.com.
 """
 
 from pathlib import Path
@@ -66,18 +63,16 @@ def write_com(pdb_path, com_path, charge, mult,
     if not atoms:
         raise ValueError(f"No ATOM/HETATM records in {pdb_path}")
 
-    base     = Path(pdb_path).stem.replace('_capped', '')
-    chk_name = f"{base}_opt.chk"
-    title    = f"{base}  b3lyp/6-31g* geometry optimisation"
+    base  = Path(pdb_path).stem.replace('_capped', '')
+    title = f"{base}  b3lyp/6-31g* geometry optimisation"
 
-    header = [f"%nprocshared={nproc}", f"%mem={mem}", f"%chk={chk_name}", route]
+    header = [f"%nprocshared={nproc}", f"%mem={mem}", route]
     atoms_xyz = [(_elem(a['name']), a['x'], a['y'], a['z']) for a in atoms]
     _write_gjf(com_path, header, title, charge, mult, atoms_xyz)
 
     print(f"Input  : {pdb_path}  ({len(atoms)} atoms)")
     print(f"Output : {com_path}")
     print(f"  Charge / mult : {charge} / {mult}")
-    print(f"  Checkpoint    : {chk_name}")
     print(f"  nproc / mem   : {nproc} / {mem}")
 
 
@@ -129,16 +124,12 @@ def write_hf_com(atoms_xyz, com_path, base, charge, mult,
     Write an HF/6-31G(d) single-point .com for ESP/RESP from an atom list.
 
     atoms_xyz : list of (element, x, y, z) — typically from parse_opt_log()
-    base      : residue name stem (e.g. 'MEO'), used for chk filename and title
+    base      : residue name stem (e.g. 'MEO'), used for title
     """
-    chk_name = f"{base}_hf.chk"
-    title    = f"{base}"
-
-    header = [f"%nprocshared={nproc}", f"%mem={mem}", f"%chk={chk_name}", route]
-    _write_gjf(com_path, header, title, charge, mult, atoms_xyz)
+    header = [f"%nprocshared={nproc}", f"%mem={mem}", route]
+    _write_gjf(com_path, header, f"{base}", charge, mult, atoms_xyz)
 
     print(f"Output : {com_path}")
     print(f"  Charge / mult : {charge} / {mult}")
-    print(f"  Checkpoint    : {chk_name}")
     print(f"  nproc / mem   : {nproc} / {mem}")
     print(f"  Atoms         : {len(atoms_xyz)}")
