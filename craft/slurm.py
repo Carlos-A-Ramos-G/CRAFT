@@ -108,7 +108,7 @@ def write_slurm(cfg, output, proj_root, workdir, position='middle', config_path=
                     if modules else '# (no modules configured)')
 
     # -- conda activation ------------------------------------------------------
-    conda_env = sl.get('conda_env', '').strip()
+    conda_env = (sl.get('conda_env') or '').strip()
     if conda_env:
         conda_block = (
             f'source "$(conda info --base)/etc/profile.d/conda.sh"\n'

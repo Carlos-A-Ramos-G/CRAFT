@@ -108,7 +108,7 @@ def hf_input():
     import yaml
     from pathlib import Path
     from craft import parse_opt_log, write_hf_com, get_resname
-    from craft.gaussian import NPROC_DEFAULT, MEM_DEFAULT
+    from craft.gaussian import NPROC_DEFAULT, MEM_DEFAULT, HF_ROUTE_DEFAULT
 
     parser = argparse.ArgumentParser(
         description="Gaussian opt log -> HF/6-31G(d) single-point .com",
@@ -162,7 +162,7 @@ def hf_input():
     print(f"Writing HF/6-31G(d) single-point input ...")
     write_hf_com(atoms_xyz, com_path, base,
                  charge=charge, mult=mult, nproc=nproc, mem=mem,
-                 route=g_cfg.get('route'))
+                 route=g_cfg.get('route') or HF_ROUTE_DEFAULT)
 
 
 # ---------------------------------------------------------------------------
