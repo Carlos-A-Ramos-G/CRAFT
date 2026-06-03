@@ -123,10 +123,8 @@ def hf_input():
     parser.add_argument('--mem',          default=None)
     args = parser.parse_args()
 
-    try:
-        cfg = yaml.safe_load(open(args.config))
-    except FileNotFoundError:
-        cfg = {}
+    with open(args.config) as f:
+        cfg = yaml.safe_load(f)
     res_cfg = cfg.get('residue', {})
     g_cfg   = cfg.get('gaussian_hf', {}) or cfg.get('gaussian', {}) or {}
 
@@ -187,10 +185,8 @@ def amber():
     parser.add_argument('--workdir',       default='.')
     args = parser.parse_args()
 
-    try:
-        cfg = yaml.safe_load(open(args.config))
-    except FileNotFoundError:
-        cfg = {}
+    with open(args.config) as f:
+        cfg = yaml.safe_load(f)
     res_cfg = cfg.get('residue', {})
     amb_cfg = cfg.get('amber',   {}) or {}
     cap_cfg = cfg.get('cap',     {}) or {}

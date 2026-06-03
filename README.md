@@ -108,43 +108,62 @@ The PDB can be a free amino acid (zwitterionic), a residue cut from a PDB chain 
 
 **2. Run the pipeline**
 
+All commands must be run from the **project root** — the directory that contains `config.yaml`. CRAFT creates all outputs under `<resname>/<position>/` relative to that directory. Running from a subdirectory will cause `craft-run` and `craft-slurm` to fail (config not found), and will cause `craft-hf-input` and `craft-amber` to write outputs to the wrong location.
+
+Expected layout after Phase 1:
+
+```
+project_root/          ← run all commands from here
+├── config.yaml
+├── KME3/
+│   └── KME3.pdb       ← input_pdb
+└── KME3/middle/       ← created by craft-run
+    ├── KME3_capped.pdb
+    ├── KME3_opt.com
+    ├── resp.in
+    ├── resp.qin
+    └── KME3.mc
+```
+
 *If CRAFT is installed as a package (`pip install .`):*
 
 ```bash
 # Phase 1 -- local; creates <resname>/<position>/
-craft-run
+craft-run --config config.yaml
 
 # Phase 2a -- submit geometry optimisation to HPC
 #   Input:  <resname>/<position>/<base>_opt.com
 #   Output: <resname>/<position>/<base>_opt.log  (copy back from HPC)
 
 # Phase 2b -- local, after opt log arrives
-craft-hf-input <resname>/<position>/<base>_opt.log
+craft-hf-input <resname>/<position>/<base>_opt.log --config config.yaml
 
 # Phase 2c -- submit HF/ESP single-point to HPC
 #   Input:  <resname>/<position>/<base>_hf.com
 #   Output: <resname>/<position>/<base>_hf.log  (copy back from HPC)
 
 # Phase 3 -- local, after HF log arrives
-craft-amber <resname>/<position>/<base>_hf.log
+craft-amber <resname>/<position>/<base>_hf.log --config config.yaml
 ```
 
 *Automated (single SLURM job):*
 
 ```bash
-craft-slurm                              # generates <resname>/<position>/<base>_craft.sh
+craft-slurm --config config.yaml        # generates <resname>/<position>/<base>_craft.sh
 cd <resname>/<position>
 sbatch <base>_craft.sh
 ```
 
 *If running directly from source (no install):*
 
+The root-level scripts (`run.py`, `make_hf_input.py`, `amber_pipeline.py`, `make_slurm.py`) are thin wrappers that delegate directly to `craft.cli.*`. They accept the same flags as the `craft-*` commands and produce identical output. The `craft` package must still be importable — run from the repository root or add it to `PYTHONPATH`.
+
 ```bash
-python run.py
-python make_hf_input.py <resname>/<position>/<base>_opt.log
-python amber_pipeline.py <resname>/<position>/<base>_hf.log
+python run.py --config config.yaml
+python make_hf_input.py <resname>/<position>/<base>_opt.log --config config.yaml
+python amber_pipeline.py <resname>/<position>/<base>_hf.log --config config.yaml
 # or
-python make_slurm.py
+python make_slurm.py --config config.yaml
 cd <resname>/<position> && sbatch <base>_craft.sh
 ```
 
@@ -162,7 +181,50 @@ The SLURM script has absolute paths baked in at generation time, so it runs corr
 | `craft-amber` | 3 | Run espgen → resp → antechamber → prepgen → parmchk2 |
 | `craft-slurm` | — | Generate a single SLURM script for the full pipeline |
 
-Equivalent convenience scripts (`run.py`, `make_hf_input.py`, `amber_pipeline.py`, `make_slurm.py`) are also provided for users who prefer to run directly from source without installing.
+All commands accept `--config <path>` (default: `config.yaml`) and require the config file to exist.
+
+The default `config.yaml` is resolved relative to the current working directory, not the script location. If you invoke a command from anywhere other than the project root, either `cd` there first or supply an absolute path:
+
+```bash
+craft-hf-input KME3/middle/KME3_opt.log --config /abs/path/to/config.yaml
+```
+
+**`craft-run --config <path>`**
+
+Reads all inputs from the config file. No other flags.
+
+**`craft-hf-input <opt.log> [<hf.com>] [options]`**
+
+| Argument / Flag | Default | Description |
+|-----------------|---------|-------------|
+| `<opt.log>` | _(required)_ | Gaussian geometry-optimisation log |
+| `[<hf.com>]` | `<base>_hf.com` in same directory as log | Output HF single-point input file |
+| `--config <path>` | `config.yaml` | Config file (required) |
+| `-c`, `--charge <int>` | from config | Net molecular charge |
+| `-m`, `--mult <int>` | from config | Spin multiplicity |
+| `-n`, `--nproc <int>` | from config | Number of processors for Gaussian |
+| `--mem <str>` | from config | Memory for Gaussian (e.g. `512MB`) |
+
+CLI flags override the corresponding config values.
+
+**`craft-amber <hf.log> [options]`**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--config <path>` | `config.yaml` | Config file (required) |
+| `-c`, `--charge <int>` | from config | Net molecular charge |
+| `--resname <str>` | inferred from log filename | Residue name (overrides auto-detection) |
+| `--workdir <path>` | directory of `<hf.log>` | Directory where AMBER output is written |
+
+**`craft-slurm --config <path>`**
+
+Reads all inputs from the config file. No other flags.
+
+**`craft-check`**
+
+No flags. Checks that Gaussian, AmberTools, and required Python packages are available.
+
+Equivalent convenience scripts (`run.py`, `make_hf_input.py`, `amber_pipeline.py`, `make_slurm.py`) are thin wrappers that delegate to `craft.cli.*` and accept the same flags as the corresponding `craft-*` commands. The `craft` package must be importable (run from the repository root, or set `PYTHONPATH`).
 
 ---
 
