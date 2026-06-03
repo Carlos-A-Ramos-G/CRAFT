@@ -242,6 +242,17 @@ def cap(input_pdb, output_pdb, position='middle'):
 
     _check_terminus(atoms, position)
 
+    # -- Detect ring nitrogen (e.g. proline): non-H, non-CA heavy atom bonded to N
+    # Purely geometric — works for any proline-like residue without name checks.
+    ring_nbr = None
+    for _a in atoms:
+        if _a['name'] in ('N', 'CA', 'C', 'O') or _a['name'].startswith('H'):
+            continue
+        _p = np.array([_a['x'], _a['y'], _a['z']])
+        if np.linalg.norm(_p - N) < 1.6:
+            ring_nbr = _p
+            break
+
     # -- Determine which atoms to remove and whether to inject amide H --------
     if position == 'nterm':
         # N-terminus is free: keep all H on N; remove OXT (replaced by NME)
@@ -251,13 +262,22 @@ def cap(input_pdb, output_pdb, position='middle'):
         remove_idx     = set(oxt_idx)
     else:
         # middle or cterm: ACE attaches to N-terminus
-        if len(h_on_N) == 1:
+        if ring_nbr is not None:
+            # Ring N (proline-like): N already has 3 heavy-atom bonds (CA, ring,
+            # ACE-to-be).  Remove any H; place ACE using the ring atom + CA.
+            h_remove       = h_on_N
+            existing_H_pos = None
+            inject_amide_H = False
+        elif len(h_on_N) == 1:
+            # Peptide fragment: single amide H present — use its position to
+            # anchor ACE, keep the H for now (written after N in the output).
             h_remove       = []
             existing_H_pos = np.array([atoms[h_on_N[0]]['x'],
                                        atoms[h_on_N[0]]['y'],
                                        atoms[h_on_N[0]]['z']])
             inject_amide_H = False
         else:
+            # Free amino acid (0 or ≥2 H on N): remove all, inject one amide H.
             h_remove       = h_on_N
             existing_H_pos = None
             inject_amide_H = True
@@ -277,6 +297,9 @@ def cap(input_pdb, output_pdb, position='middle'):
 
     if position == 'nterm':
         h_action = "N-terminus left free (no ACE)"
+    elif ring_nbr is not None:
+        h_action = (f"ring N -- remove {len(h_remove)} H(s) on N, anchor ACE on ring atom + CA"
+                    if h_remove else "ring N -- no H to remove, anchor ACE on ring atom + CA")
     elif existing_H_pos is not None:
         h_action = "keep existing amide-H, use it to anchor ACE"
     else:
@@ -293,7 +316,9 @@ def cap(input_pdb, output_pdb, position='middle'):
 
     # -- Compute ACE geometry (middle and cterm only) -------------------------
     if position in ('middle', 'cterm'):
-        if existing_H_pos is not None:
+        if ring_nbr is not None:
+            ACE_C = sp2_third(N, ring_nbr, CA, 1.335)
+        elif existing_H_pos is not None:
             ACE_C = sp2_third(N, existing_H_pos, CA, 1.335)
         else:
             ACE_C = nerf(C, CA, N, 1.335, 121.0, 0.0)
