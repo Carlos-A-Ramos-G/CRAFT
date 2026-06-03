@@ -56,6 +56,11 @@ existing_examples/
 # Local test configuration (contains site-specific paths and credentials)
 tests_config.yaml
 
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
 # Docs / misc
 *.html
 message.txt
