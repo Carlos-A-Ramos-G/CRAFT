@@ -79,7 +79,7 @@ def write_slurm(cfg, output, proj_root, workdir, position='middle', config_path=
     sl       = cfg.get('slurm', {}) or {}
 
     input_pdb = res_cfg.get('input_pdb', '')
-    resname   = get_resname(input_pdb) if input_pdb else Path(input_pdb or 'residue.pdb').stem
+    resname   = get_resname(input_pdb) if input_pdb else 'residue'
     prefix    = {'middle': '', 'cterm': 'C', 'nterm': 'N'}[position]
     base      = f"{prefix}{resname}"
     job_name  = sl.get('job_name') or f"{base}_craft"

@@ -36,7 +36,6 @@ def write_mc(capped_pdb, charge, output, position='middle'):
     position   : str        -- 'middle', 'cterm', or 'nterm'
     """
     atoms    = parse_pdb(capped_pdb)
-    name_map = {i: atoms[i]['name'] for i in range(len(atoms))}
 
     ace_idx  = [i for i, a in enumerate(atoms) if a['resSeq'] == 1]
     res_idx  = [i for i, a in enumerate(atoms) if a['resSeq'] == 2]
@@ -55,12 +54,12 @@ def write_mc(capped_pdb, charge, output, position='middle'):
 
     lines = []
     if position in ('middle', 'cterm'):
-        lines.append(f"HEAD_NAME {name_map[head_i]}")
+        lines.append(f"HEAD_NAME {atoms[head_i]['name']}")
     if position in ('middle', 'nterm'):
-        lines.append(f"TAIL_NAME {name_map[tail_i]}")
-    lines.append(f"MAIN_CHAIN {name_map[ca_i]}")
+        lines.append(f"TAIL_NAME {atoms[tail_i]['name']}")
+    lines.append(f"MAIN_CHAIN {atoms[ca_i]['name']}")
     for i in omit_idx:
-        lines.append(f"OMIT_NAME {name_map[i]}")
+        lines.append(f"OMIT_NAME {atoms[i]['name']}")
     if position in ('middle', 'cterm'):
         lines.append("PRE_HEAD_TYPE C")
     if position in ('middle', 'nterm'):
@@ -71,9 +70,9 @@ def write_mc(capped_pdb, charge, output, position='middle'):
 
     info_parts = []
     if position in ('middle', 'cterm'):
-        info_parts.append(f"HEAD={name_map[head_i]}")
-    info_parts.append(f"CA={name_map[ca_i]}")
+        info_parts.append(f"HEAD={atoms[head_i]['name']}")
+    info_parts.append(f"CA={atoms[ca_i]['name']}")
     if position in ('middle', 'nterm'):
-        info_parts.append(f"TAIL={name_map[tail_i]}")
+        info_parts.append(f"TAIL={atoms[tail_i]['name']}")
     info_parts.append(f"omit {len(omit_idx)} cap atoms")
     print(f"  {Path(output).name:<16s}: {' '.join(info_parts)}")

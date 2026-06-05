@@ -8,6 +8,7 @@ Two flavours:
 """
 
 from pathlib import Path
+from .cap import _elem
 
 
 # -- Constants -----------------------------------------------------------------
@@ -24,11 +25,6 @@ ATOMIC_SYMBOLS = {
 
 
 # -- Helpers -------------------------------------------------------------------
-
-def _elem(name):
-    """Element symbol from a PDB atom name."""
-    return name.lstrip('0123456789')[0].upper()
-
 
 def _parse_pdb(path):
     atoms = []
