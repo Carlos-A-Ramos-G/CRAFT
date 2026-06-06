@@ -42,6 +42,7 @@ Gaussian HF/6-31G(d) single-point (ESP)
   |
   v  Phase 3 (local / HPC)
 espgen -> resp -> antechamber -> prepgen -> parmchk2
+post-process frcmod: remove ATTN placeholders; warn on penalty score > 100
   |
   v
 <resname>/<position>/<base>.prepin              -- residue topology
@@ -49,7 +50,7 @@ espgen -> resp -> antechamber -> prepgen -> parmchk2
 <resname>/<position>/<base>_{forcefield}.frcmod -- FF-specific missing parameters
 ```
 
-Where `<base>` is `<resname>` for `middle`, `<resname>_cterm` for `cterm`, and `<resname>_nterm` for `nterm`.
+Where `<base>` is `<resname>` for `middle`, `C<resname>` for `cterm`, and `N<resname>` for `nterm`.
 
 ---
 
@@ -202,6 +203,11 @@ reaction:
 gaussian_opt:
   nproc: 16
   mem: 512MB
+  # Recommended: keep backbone + cap atoms fixed so only the side chains relax.
+  # This prevents the model compound from drifting into non-physiological backbone
+  # conformations. Set to false only if you have a specific reason to allow full
+  # relaxation and understand the implications for the resulting geometry.
+  freeze_backbone: true
 
 gaussian_hf:
   nproc: 16
@@ -243,8 +249,8 @@ residue1.pdb  residue2.pdb             combined.pdb (bonded, no caps)
    cap()           cap()              split by resName → cap() × 2
       |               |                        |
       +-- assemble --+                         |
-   CRAFT places bond                           |
-   geometry (bond_length)                      |
+   angle + torsion geometry                    |
+   (RDKit UFF or numpy torsion scan)           |
               |                               |
               +------------- merge, unique atom names -----------+
                                               |
@@ -265,6 +271,7 @@ residue1.pdb  residue2.pdb             combined.pdb (bonded, no caps)
                                               |
                               Phase 3 (local)
                      espgen → resp → antechamber (combined) → prepgen × 2 → parmchk2
+                     post-process frcmod: remove ATTN placeholders; warn on penalty score > 100
 ```
 
 ### Commands
@@ -319,7 +326,7 @@ The residue names in the combined PDB must match those inferred from `residue1.i
 | `craft-check` | — | Verify all required tools and packages are available |
 | `craft-run` | 1 | Cap termini, generate all pre-Gaussian inputs |
 | `craft-hf-input` | 2b | Extract optimised geometry, write HF `.com` |
-| `craft-amber` | 3 | Run espgen → resp → antechamber → prepgen → parmchk2 |
+| `craft-amber` | 3 | Run espgen → resp → antechamber → prepgen → parmchk2; clean frcmod |
 | `craft-slurm` | — | Generate a single SLURM script for the full pipeline |
 
 Both commands also handle the two-residue reaction workflow when the config contains `residue1`/`residue2`/`reaction` keys instead of `residue`.
@@ -358,6 +365,8 @@ CLI flags override the corresponding config values.
 | `-c`, `--charge <int>` | from config | Net molecular charge |
 | `--resname <str>` | inferred from log filename | Residue name (overrides auto-detection) |
 | `--workdir <path>` | directory of `<hf.log>` | Directory where AMBER output is written |
+
+After each `parmchk2` run, `craft-amber` automatically post-processes the generated `.frcmod` files: lines marked `ATTN, need revision` (zero-value placeholder parameters that parmchk2 writes when it cannot find a match) are removed, and a warning listing any parameters with a penalty score above 100 is printed if any are found. High-penalty parameters are guessed from distant analogues and may need manual review before production runs.
 
 When the config contains `residue1`/`residue2`/`reaction` keys, `craft-run` and `craft-amber` automatically switch to reaction mode. `craft-run` reads all inputs from the config; `craft-amber` accepts the same flags as the single-residue case (`--charge`, `--workdir`) while `--resname` is ignored.
 
@@ -449,6 +458,9 @@ reaction:
 gaussian_opt:
   nproc: 16
   mem: 512MB
+  # Recommended: keep backbone + cap atoms fixed so only the side chains relax.
+  # Set to false only if you have a specific reason for full relaxation.
+  freeze_backbone: true
 
 gaussian_hf:
   nproc: 16
@@ -470,8 +482,8 @@ craft/
   gaussian.py    -- Gaussian .com writers, opt log parser
   resp.py        -- resp.in / resp.qin generation, RESP equivalence detection
   mc.py          -- prepgen main-chain (.mc) file writer
-  amber.py       -- antechamber, prepgen, parmchk2 runner; atom name remapping
-  react.py       -- two-residue reaction parameterization (reaction mode of craft-run/craft-amber)
+  amber.py       -- antechamber, prepgen, parmchk2 runner; atom name remapping; frcmod post-processing
+  react.py       -- two-residue reaction parameterization; angle-correct assembly geometry
   slurm.py       -- SLURM batch script generator
   cli.py         -- craft-* command entry points
   check.py       -- environment checker (craft-check)

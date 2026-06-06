@@ -19,6 +19,31 @@ import sys
 # Shared helpers
 # ---------------------------------------------------------------------------
 
+def _load_config(path):
+    """Load and return a YAML config, or exit with a clear message if not found."""
+    import yaml
+    from pathlib import Path
+    p = Path(path)
+    if not p.exists():
+        sys.exit(
+            f"Error: config file '{path}' not found.\n"
+            f"\n"
+            f"  All craft-* commands must be run from the directory that contains\n"
+            f"  your config.yaml, or you must supply an explicit path:\n"
+            f"\n"
+            f"    craft-run --config /path/to/config.yaml\n"
+            f"    craft-hf-input <opt.log> --config /path/to/config.yaml\n"
+            f"    craft-amber   <hf.log>  --config /path/to/config.yaml\n"
+            f"    craft-slurm            --config /path/to/config.yaml\n"
+            f"\n"
+            f"  Copy config.yaml (single residue) or config_react.yaml (two bonded\n"
+            f"  residues) from the CRAFT repository into your working directory and\n"
+            f"  fill in the values for your system."
+        )
+    with open(p) as f:
+        return yaml.safe_load(f)
+
+
 def _resnames_from_pdb(pdb_path):
     """Return non-cap residue names from pdb_path in order of first appearance."""
     from craft.cap import parse_pdb
@@ -195,6 +220,7 @@ def _run_react(cfg, args):
         nproc=g_cfg.get('nproc', NPROC_DEFAULT),
         mem=g_cfg.get('mem', MEM_DEFAULT),
         route=g_cfg.get('route', "#P b3lyp/6-31g* opt(modredundant)"),
+        freeze_backbone=g_cfg.get('freeze_backbone', True),
     )
 
     print()
@@ -222,7 +248,6 @@ def _run_react(cfg, args):
 def run():
     """Cap residue(s) and generate all pre-Gaussian inputs (Phase 1)."""
     import argparse
-    import yaml
     from pathlib import Path
 
     parser = argparse.ArgumentParser(
@@ -233,8 +258,7 @@ def run():
                         help='Config file (default: config.yaml)')
     args = parser.parse_args()
 
-    with open(args.config) as f:
-        cfg = yaml.safe_load(f)
+    cfg = _load_config(args.config)
 
     if 'residue1' in cfg:
         _run_react(cfg, args)
@@ -315,7 +339,6 @@ def run():
 def hf_input():
     """Extract optimised geometry and write HF/6-31G(d) single-point input."""
     import argparse
-    import yaml
     from pathlib import Path
     from craft import parse_opt_log, write_hf_com, get_resname
     from craft.gaussian import NPROC_DEFAULT, MEM_DEFAULT, HF_ROUTE_DEFAULT
@@ -333,8 +356,7 @@ def hf_input():
     parser.add_argument('--mem',          default=None)
     args = parser.parse_args()
 
-    with open(args.config) as f:
-        cfg = yaml.safe_load(f)
+    cfg = _load_config(args.config)
     res_cfg = cfg.get('residue', {})
     g_cfg   = cfg.get('gaussian_hf', {}) or cfg.get('gaussian', {}) or {}
 
@@ -437,7 +459,6 @@ def _amber_react(cfg, args):
 def amber():
     """Run espgen -> resp -> antechamber -> prepgen -> parmchk2 (Phase 3)."""
     import argparse
-    import yaml
     from pathlib import Path
 
     parser = argparse.ArgumentParser(
@@ -453,8 +474,7 @@ def amber():
     parser.add_argument('--workdir',      default='.')
     args = parser.parse_args()
 
-    with open(args.config) as f:
-        cfg = yaml.safe_load(f)
+    cfg = _load_config(args.config)
 
     if 'residue1' in cfg:
         _amber_react(cfg, args)
@@ -548,7 +568,6 @@ def _slurm_react(cfg, config_path):
 def slurm():
     """Generate a SLURM batch script for the full pipeline."""
     import argparse
-    import yaml
     from pathlib import Path
 
     parser = argparse.ArgumentParser(
@@ -560,8 +579,7 @@ def slurm():
     args = parser.parse_args()
 
     config_path = Path(args.config).resolve()
-    with open(config_path) as f:
-        cfg = yaml.safe_load(f)
+    cfg = _load_config(args.config)
 
     if 'residue1' in cfg:
         _slurm_react(cfg, config_path)

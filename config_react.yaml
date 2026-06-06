@@ -70,6 +70,12 @@ reaction:
 gaussian_opt:
   nproc: 16
   mem: 512MB
+  freeze_backbone: true      # Recommended: keep backbone + cap atoms fixed so only
+                             # the side chains are free to relax. This prevents the
+                             # model compound from drifting into non-physiological
+                             # backbone conformations. Set to false only if you know
+                             # what you are doing and have a specific reason to allow
+                             # full relaxation.
 
 # -- Phase 2: HF/6-31G(d) single-point for ESP/RESP ---------------------------
 gaussian_hf:

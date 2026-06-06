@@ -413,30 +413,41 @@ def _frozen_indices(atoms):
 
 def write_react_com(combined_pdb, com_path, charge, mult,
                     nproc=NPROC_DEFAULT, mem=MEM_DEFAULT,
-                    route=_REACT_ROUTE_DEFAULT):
+                    route=_REACT_ROUTE_DEFAULT, freeze_backbone=True):
     """
-    Write a frozen-backbone geometry-optimisation .com for the combined system.
-    Cap and backbone atoms are frozen via ModRedundant; only side chains move.
+    Write a geometry-optimisation .com for the combined two-residue system.
+
+    freeze_backbone=True  (default): cap atoms and backbone N/CA/C/O of both
+      residues are frozen via ModRedundant; only side chains are free to move.
+    freeze_backbone=False: no constraints are applied; the full system relaxes.
     """
     atoms = parse_pdb(combined_pdb)
     if not atoms:
         raise ValueError(f"No ATOM/HETATM records in {combined_pdb}")
 
-    if 'modredundant' not in route.lower():
-        route = route.replace(' opt', ' opt(modredundant)', 1)
+    if freeze_backbone:
+        if 'modredundant' not in route.lower():
+            route = route.replace(' opt', ' opt(modredundant)', 1)
+    else:
+        # Remove any modredundant keyword that may be present (e.g. from the default).
+        route = re.sub(r'\bopt\(modredundant\)', 'opt', route, flags=re.IGNORECASE)
 
-    base   = Path(combined_pdb).stem
-    header = [f"%nprocshared={nproc}", f"%mem={mem}", route]
+    base  = Path(combined_pdb).stem
+    title = (f"{base}  reaction complex backbone-frozen optimisation"
+             if freeze_backbone else
+             f"{base}  reaction complex full optimisation")
+    header    = [f"%nprocshared={nproc}", f"%mem={mem}", route]
     atoms_xyz = [(_elem(a['name']), a['x'], a['y'], a['z']) for a in atoms]
-    _write_gjf(com_path, header,
-               f"{base}  reaction complex backbone-frozen optimisation",
-               charge, mult, atoms_xyz)
+    _write_gjf(com_path, header, title, charge, mult, atoms_xyz)
 
-    frozen = _frozen_indices(atoms)
-    with open(com_path, 'a') as f:
-        f.write('\n'.join(f"X {i} F" for i in frozen) + '\n\n')
+    if freeze_backbone:
+        frozen = _frozen_indices(atoms)
+        with open(com_path, 'a') as f:
+            f.write('\n'.join(f"X {i} F" for i in frozen) + '\n\n')
+        print(f"Input  : {combined_pdb}  ({len(atoms)} atoms, {len(frozen)} frozen)")
+    else:
+        print(f"Input  : {combined_pdb}  ({len(atoms)} atoms, no constraints)")
 
-    print(f"Input  : {combined_pdb}  ({len(atoms)} atoms, {len(frozen)} frozen)")
     print(f"Output : {com_path}")
     print(f"  Charge / mult : {charge} / {mult}  |  nproc / mem : {nproc} / {mem}")
 
