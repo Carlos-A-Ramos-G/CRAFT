@@ -30,7 +30,7 @@ cd "$PROJ_ROOT"
 
 # -- Phase 1: cap termini, generate Gaussian inputs and RESP files -------------
 echo "[$(date '+%H:%M:%S')] Phase 1 -- craft-run"
-craft-run "$CRAFT_CONFIG"
+craft-run --config "$CRAFT_CONFIG"
 [ $? -ne 0 ] && echo "ERROR in Phase 1" && exit 1
 
 # -- Phase 2a: geometry optimisation ------------------------------------------

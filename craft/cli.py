@@ -277,6 +277,234 @@ def slurm():
 
 
 # ---------------------------------------------------------------------------
+# craft-react-run   (Phase 1)
+# ---------------------------------------------------------------------------
+
+def react_run():
+    """Cap both residues, assemble combined model, write all Phase 1 inputs."""
+    import argparse
+    import json
+    import yaml
+    from pathlib import Path
+    from craft import cap, get_resname
+    from craft.gaussian import NPROC_DEFAULT, MEM_DEFAULT
+    from craft.react import (assemble_react_pdb, _split_combined_pdb,
+                              write_react_com,
+                              write_react_resp_in, write_react_resp_qin,
+                              write_react_mc)
+
+    parser = argparse.ArgumentParser(
+        description="Cap both residues and generate all Phase 1 inputs for "
+                    "side-chain reaction parameterization",
+    )
+    parser.add_argument('--config', default='config.yaml',
+                        help='Config file (default: config.yaml)')
+    args = parser.parse_args()
+
+    with open(args.config) as f:
+        cfg = yaml.safe_load(f)
+
+    res1_cfg = cfg['residue1']
+    res2_cfg = cfg['residue2']
+    rxn_cfg  = cfg['reaction']
+    g_cfg    = cfg.get('gaussian_opt') or cfg.get('gaussian') or {}
+
+    pdb1      = res1_cfg['input_pdb']
+    pdb2      = res2_cfg['input_pdb']
+    charge1   = res1_cfg.get('charge', 0)
+    charge2   = res2_cfg.get('charge', 0)
+    position1 = res1_cfg.get('position', 'middle')
+    position2 = res2_cfg.get('position', 'middle')
+
+    if position1 != 'middle' or position2 != 'middle':
+        sys.exit(
+            f"Error: the reaction workflow currently only supports position='middle' "
+            f"for both residues (cterm/nterm will be added in a future release). "
+            f"Got residue1={position1!r}, residue2={position2!r}."
+        )
+
+    resname1  = get_resname(pdb1)
+    resname2  = get_resname(pdb2)
+
+    atom1        = rxn_cfg['atom1']
+    atom2        = rxn_cfg['atom2']
+    bond_length  = rxn_cfg.get('bond_length', 1.5)
+    total_charge = charge1 + charge2
+
+    base    = f"{resname1}_{resname2}_react"
+    workdir = Path(resname1) / resname2
+    sub1    = workdir / resname1
+    sub2    = workdir / resname2
+    workdir.mkdir(parents=True, exist_ok=True)
+    sub1.mkdir(exist_ok=True)
+    sub2.mkdir(exist_ok=True)
+
+    capped1         = str(sub1 / f"{resname1}_capped.pdb")
+    capped2         = str(sub2 / f"{resname2}_capped.pdb")
+    combined_pdb    = str(workdir / f"{base}_combined.pdb")
+    com_path        = str(workdir / f"{base}_opt.com")
+    mc1_path        = str(sub1 / f"{resname1}.mc")
+    mc2_path        = str(sub2 / f"{resname2}.mc")
+    resp_in_path    = str(workdir / 'resp.in')
+    resp_qin_path   = str(workdir / 'resp.qin')
+    rename_map_path = str(workdir / 'rename_map.json')
+
+    combined_input = rxn_cfg.get('combined_pdb')
+
+    if combined_input:
+        print("=" * 60)
+        print(f"Steps 1+2 -- Cap residues from pre-assembled structure")
+        print("=" * 60)
+        split1 = str(sub1 / f"{resname1}_split.pdb")
+        split2 = str(sub2 / f"{resname2}_split.pdb")
+        _split_combined_pdb(combined_input, resname1, resname2, split1, split2)
+        cap(split1, capped1, position=position1)
+        cap(split2, capped2, position=position2)
+
+        print()
+        print("=" * 60)
+        print(f"Step 3 -- Assemble with caps, preserving pre-assembled geometry")
+        print("=" * 60)
+        _, _, rename_map = assemble_react_pdb(
+            capped1, capped2, atom1, atom2,
+            skip_reposition=True, output=combined_pdb)
+    else:
+        print("=" * 60)
+        print(f"Step 1 -- Cap {resname1}  [{position1}]")
+        print("=" * 60)
+        cap(pdb1, capped1, position=position1)
+
+        print()
+        print("=" * 60)
+        print(f"Step 2 -- Cap {resname2}  [{position2}]")
+        print("=" * 60)
+        cap(pdb2, capped2, position=position2)
+
+        print()
+        print("=" * 60)
+        print(f"Step 3 -- Assemble combined model  ({atom1}—{atom2}, {bond_length} Å)")
+        print("=" * 60)
+        _, _, rename_map = assemble_react_pdb(
+            capped1, capped2, atom1, atom2, bond_length, combined_pdb)
+    with open(rename_map_path, 'w') as f:
+        json.dump(rename_map, f, indent=2)
+    if rename_map:
+        print(f"  rename_map.json : {len(rename_map)} atom(s) renamed in {resname2}")
+
+    print()
+    print("=" * 60)
+    print("Step 4 -- Frozen-backbone Gaussian opt input")
+    print("=" * 60)
+    write_react_com(
+        combined_pdb, com_path,
+        charge=total_charge, mult=1,
+        nproc=g_cfg.get('nproc', NPROC_DEFAULT),
+        mem=g_cfg.get('mem', MEM_DEFAULT),
+        route=g_cfg.get('route', "#P b3lyp/6-31g* opt(modredundant)"),
+    )
+
+    print()
+    print("=" * 60)
+    print("Step 5 -- MC and RESP input files")
+    print("=" * 60)
+    write_react_mc(combined_pdb, 2, charge1, mc1_path, position1)
+    write_react_mc(combined_pdb, 5, charge2, mc2_path, position2)
+    write_react_resp_in(combined_pdb, total_charge, resname1, resname2,
+                        resp_in_path, position1, position2)
+    write_react_resp_qin(combined_pdb, resp_qin_path, position1, position2)
+
+    print()
+    print(f"All Phase 1 outputs written to: {workdir}/")
+    print(f"\nNext steps:")
+    print(f"  1. Submit {workdir}/{base}_opt.com to HPC")
+    print(f"  2. Copy {base}_opt.log into {workdir}/, then:")
+    print(f"       craft-hf-input {workdir}/{base}_opt.log "
+          f"--charge {total_charge} --config {args.config}")
+    print(f"  3. Submit {workdir}/{base}_hf.com to HPC")
+    print(f"  4. Copy {base}_hf.log into {workdir}/, then:")
+    print(f"       craft-react-amber {workdir}/{base}_hf.log --config {args.config}")
+
+
+# ---------------------------------------------------------------------------
+# craft-react-amber   (Phase 3)
+# ---------------------------------------------------------------------------
+
+def react_amber():
+    """Run RESP + AMBER pipeline for a two-residue side-chain reaction complex."""
+    import argparse
+    import json
+    import yaml
+    from pathlib import Path
+    from craft import get_resname
+    from craft.react import run_react_amber_pipeline
+
+    parser = argparse.ArgumentParser(
+        description="Run AMBER parameterization pipeline for a two-residue "
+                    "reaction complex from the combined Gaussian HF log",
+    )
+    parser.add_argument('log',            help='Gaussian HF/ESP log for the combined system')
+    parser.add_argument('--config',       default='config.yaml',
+                        help='Config file (default: config.yaml)')
+    parser.add_argument('-c', '--charge', type=int, default=None,
+                        help='Override total molecular charge')
+    parser.add_argument('--workdir',      default='.')
+    args = parser.parse_args()
+
+    with open(args.config) as f:
+        cfg = yaml.safe_load(f)
+
+    res1_cfg = cfg['residue1']
+    res2_cfg = cfg['residue2']
+    amb_cfg  = cfg.get('amber', {}) or {}
+
+    resname1     = get_resname(res1_cfg['input_pdb'])
+    resname2     = get_resname(res2_cfg['input_pdb'])
+    charge1      = res1_cfg.get('charge', 0)
+    charge2      = res2_cfg.get('charge', 0)
+    total_charge = args.charge if args.charge is not None else charge1 + charge2
+
+    workdir = (args.workdir if args.workdir != '.'
+               else str(Path(args.log).resolve().parent))
+
+    base         = f"{resname1}_{resname2}_react"
+    mc1_file     = str(Path(workdir) / resname1 / f"{resname1}.mc")
+    mc2_file     = str(Path(workdir) / resname2 / f"{resname2}.mc")
+    combined_pdb = str(Path(workdir) / f"{base}_combined.pdb")
+
+    rename_map      = {}
+    rename_map_path = Path(workdir) / 'rename_map.json'
+    if rename_map_path.exists():
+        with open(rename_map_path) as f:
+            rename_map = json.load(f)
+    elif charge2 != 0 or True:  # always warn if file missing
+        print("  Warning: rename_map.json not found -- residue2 atom names "
+              "may not be restored in the .prepin. Run craft-react-run first.")
+
+    print(f"Residues     : {resname1} (charge {charge1:+d})"
+          f" + {resname2} (charge {charge2:+d})")
+    print(f"Total charge : {total_charge:+d}")
+    print(f"Log          : {args.log}")
+    if rename_map:
+        print(f"Rename map   : {len(rename_map)} atom(s) will be restored "
+              f"in {resname2}.prepin")
+    print()
+
+    run_react_amber_pipeline(
+        hf_log       = args.log,
+        resname1     = resname1,
+        resname2     = resname2,
+        total_charge = total_charge,
+        mc_file1     = mc1_file,
+        mc_file2     = mc2_file,
+        workdir      = workdir,
+        atom_type    = amb_cfg.get('atom_type', 'amber'),
+        forcefield   = amb_cfg.get('forcefield', 'ff14SB'),
+        combined_pdb = combined_pdb,
+        rename_map   = rename_map,
+    )
+
+
+# ---------------------------------------------------------------------------
 # craft-check   (environment checker)
 # ---------------------------------------------------------------------------
 

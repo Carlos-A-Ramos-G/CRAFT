@@ -10,6 +10,8 @@ CRAFT automates the parameterization of non-standard amino acid residues for AMB
 
 Given a single-residue PDB file, CRAFT produces the `.prepin` topology and `.frcmod` force-field parameter files needed to simulate the residue in AMBER, using AMBER's standard backbone charges and RESP-fitted sidechain charges. Both ff14SB and ff19SB are supported.
 
+CRAFT also handles **two-residue side-chain reactions** (disulfide bonds, isopeptide bonds, NOS bonds, acylation of Ser/Cys, and similar cross-links). RESP charges are fitted jointly on the bonded system so mutual polarization across the new bond is captured, and `antechamber` sees the full bonded geometry to assign correct atom types at the bond interface. Separate `.prepin` files are produced for each residue; the cross-link bond is declared in tleap.
+
 Three terminal positions are supported:
 
 | `position` | Capping | Use case |
@@ -171,6 +173,145 @@ The SLURM script has absolute paths baked in at generation time, so it runs corr
 
 ---
 
+## Side-chain reaction parameterization
+
+`craft-react-run` and `craft-react-amber` handle pairs of residues that form a covalent bond through their side chains — disulfide bonds, isopeptide bonds, NOS bonds (Lys–Cys), acylation of Ser or Cys, and similar cross-links. Both residues are parameterized jointly: RESP charges are fitted on the assembled bonded system so that mutual polarization across the new bond is captured, and `antechamber` sees the full bonded geometry to assign correct atom types at the reactive interface. Separate `.prepin` files are produced for each residue; the cross-link bond itself is declared in tleap.
+
+### Config
+
+```yaml
+residue1:
+  input_pdb: CYA/CYA.pdb
+  charge: -1           # formal charge of this residue in the bonded state
+  position: middle     # only 'middle' is supported for reaction parameterization
+
+residue2:
+  input_pdb: RES/RES.pdb
+  charge: 0            # formal charge of this residue in the bonded state
+  position: middle     # only 'middle' is supported for reaction parameterization
+                       # total QM charge = residue1.charge + residue2.charge
+                       # each value is also written to that residue's .mc file
+                       # so prepgen can verify the sum of RESP charges
+
+reaction:
+  atom1: SG            # reactive atom name in residue1
+  atom2: NZ            # reactive atom name in residue2
+  bond_length: 1.8     # Å (optional; default 1.5); ignored if combined_pdb is set
+  combined_pdb:        # optional — see "Pre-assembled geometry" below
+
+gaussian_opt:
+  nproc: 16
+  mem: 512MB
+
+gaussian_hf:
+  nproc: 16
+  mem: 512MB
+
+amber:
+  forcefield: ff14SB
+  atom_type: amber
+```
+
+### Folder structure
+
+All outputs are written under `<resname1>/<resname2>/`. Per-residue files are placed in dedicated subdirectories; shared QM and AMBER files stay at the pair level.
+
+```
+<resname1>/<resname2>/
+  <r1>_<r2>_react_combined.pdb     ← assembled model compound (4 cap groups)
+  <r1>_<r2>_react_opt.com          ← frozen-backbone Gaussian opt input
+  resp.in, resp.qin, rename_map.json
+  <r1>_<r2>_react.ac
+  <r1>_<r2>_react_gaff.frcmod      ← shared for both residues
+  <r1>_<r2>_react_ff14SB.frcmod    ← shared for both residues
+  <resname1>/
+    <resname1>_capped.pdb
+    <resname1>.mc
+    <resname1>.prepin
+  <resname2>/
+    <resname2>_capped.pdb
+    <resname2>.mc
+    <resname2>.prepin
+```
+
+### Workflow
+
+```
+[Standard path]                        [Pre-assembled path]
+residue1.pdb  residue2.pdb             combined.pdb (bonded, no caps)
+      |               |                        |
+   cap()           cap()              split by resName → cap() × 2
+      |               |                        |
+      +-- assemble --+                         |
+   CRAFT places bond                           |
+   geometry (bond_length)                      |
+              |                               |
+              +------------- merge, unique atom names -----------+
+                                              |
+                         combined.pdb  (4 ACE/NME cap groups added)
+                                              |
+                     write frozen-backbone opt .com
+                       (caps + backbone N/CA/C/O fixed; side chains free)
+                     write resp.in / resp.qin / two .mc files
+                                              |
+                              Phase 2a (HPC)
+                     Gaussian B3LYP/6-31G* frozen-backbone optimisation
+                                              |
+                              Phase 2b (local)
+                     craft-hf-input <opt.log> --charge <total> --config config.yaml
+                                              |
+                              Phase 2c (HPC)
+                     Gaussian HF/6-31G(d) single-point (ESP)
+                                              |
+                              Phase 3 (local)
+                     espgen → resp → antechamber (combined) → prepgen × 2 → parmchk2
+```
+
+### Commands
+
+```bash
+# Phase 1 -- local
+craft-react-run --config config.yaml
+
+# Phase 2b -- after opt log arrives from HPC
+craft-hf-input <r1>/<r2>/<r1>_<r2>_react_opt.log --charge <total> --config config.yaml
+
+# Phase 3 -- after HF log arrives from HPC
+craft-react-amber <r1>/<r2>/<r1>_<r2>_react_hf.log --config config.yaml
+```
+
+### tleap
+
+Each residue's `.prepin` describes it in isolation. The cross-link bond is declared in tleap:
+
+```
+loadAmberPrep <resname1>.prepin
+loadAmberPrep <resname2>.prepin
+loadAmberParams <r1>_<r2>_react_ff14SB.frcmod
+mol = loadPdb system.pdb
+bond mol.X.<atom1> mol.Y.<atom2>
+saveAmberParm mol mol.prmtop mol.inpcrd
+```
+
+### Current limitations
+
+Only `position: middle` is supported for both residues. The reaction code uses fixed resSeq values (2 for residue1, 5 for residue2) that are only valid for the ACE–residue–NME capping layout. `cterm` and `nterm` support will be added in a future release. `craft-react-run` exits with an error if either position is not `middle`.
+
+### Pre-assembled geometry
+
+If you already have a PDB with both side chains bonded — from your own QM workflow or molecular modelling — set `reaction.combined_pdb` in the config. CRAFT splits the structure by residue name, adds the four ACE/NME capping groups to both backbones while preserving all coordinates, and continues with the normal frozen-backbone optimisation from there. The CRAFT assembly step is skipped; the Gaussian geometry optimisation is not.
+
+```yaml
+reaction:
+  atom1: SG
+  atom2: NZ
+  combined_pdb: my_bonded_structure.pdb
+```
+
+The residue names in the combined PDB must match those inferred from `residue1.input_pdb` and `residue2.input_pdb`.
+
+---
+
 ## Commands
 
 | Command | Phase | Description |
@@ -180,6 +321,10 @@ The SLURM script has absolute paths baked in at generation time, so it runs corr
 | `craft-hf-input` | 2b | Extract optimised geometry, write HF `.com` |
 | `craft-amber` | 3 | Run espgen → resp → antechamber → prepgen → parmchk2 |
 | `craft-slurm` | — | Generate a single SLURM script for the full pipeline |
+| `craft-react-run` | 1 | Assemble two-residue reaction complex (from individual PDBs or a pre-assembled combined structure) and generate all pre-Gaussian inputs |
+| `craft-react-amber` | 3 | Run RESP + AMBER pipeline for the combined two-residue system |
+| `craft-react-run` | 1 | Assemble two-residue reaction complex (from individual PDBs or a pre-assembled combined structure) and generate all pre-Gaussian inputs |
+| `craft-react-amber` | 3 | Run RESP + AMBER pipeline for the combined two-residue system |
 
 All commands accept `--config <path>` (default: `config.yaml`) and require the config file to exist.
 
@@ -214,6 +359,30 @@ CLI flags override the corresponding config values.
 | `--config <path>` | `config.yaml` | Config file (required) |
 | `-c`, `--charge <int>` | from config | Net molecular charge |
 | `--resname <str>` | inferred from log filename | Residue name (overrides auto-detection) |
+| `--workdir <path>` | directory of `<hf.log>` | Directory where AMBER output is written |
+
+**`craft-react-run --config <path>`**
+
+Reads all inputs from the config file. No other flags.
+
+**`craft-react-amber <hf.log> [options]`**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--config <path>` | `config.yaml` | Config file (required) |
+| `-c`, `--charge <int>` | sum of residue1 + residue2 charges from config | Override total molecular charge |
+| `--workdir <path>` | directory of `<hf.log>` | Directory where AMBER output is written |
+
+**`craft-react-run --config <path>`**
+
+Reads all inputs from the config file. No other flags. Exits with an error if either residue has `position` other than `middle`.
+
+**`craft-react-amber <hf.log> [options]`**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--config <path>` | `config.yaml` | Config file (required) |
+| `-c`, `--charge <int>` | `residue1.charge + residue2.charge` from config | Override total molecular charge |
 | `--workdir <path>` | directory of `<hf.log>` | Directory where AMBER output is written |
 
 **`craft-slurm --config <path>`**
@@ -272,6 +441,40 @@ slurm:
                               # and that has numpy/pyyaml; leave blank if not needed
 ```
 
+**Reaction config (`craft-react-run` / `craft-react-amber`)**
+
+```yaml
+residue1:
+  input_pdb: CYA/CYA.pdb
+  charge: -1           # formal charge of this residue in the bonded state
+  position: middle     # only 'middle' is supported
+
+residue2:
+  input_pdb: RES/RES.pdb
+  charge: 0            # formal charge of this residue in the bonded state
+  position: middle     # only 'middle' is supported
+                       # total QM charge = residue1.charge + residue2.charge
+                       # each value is also written to that residue's .mc CHARGE field
+
+reaction:
+  atom1: SG            # reactive atom name in residue1
+  atom2: NZ            # reactive atom name in residue2
+  bond_length: 1.8     # Å (optional; default 1.5); ignored if combined_pdb is set
+  combined_pdb:        # optional: pre-assembled bonded PDB (CRAFT adds the 4 cap groups)
+
+gaussian_opt:
+  nproc: 16
+  mem: 512MB
+
+gaussian_hf:
+  nproc: 16
+  mem: 512MB
+
+amber:
+  atom_type: amber
+  forcefield: ff14SB
+```
+
 ---
 
 ## Package structure
@@ -284,6 +487,7 @@ craft/
   resp.py        -- resp.in / resp.qin generation, RESP equivalence detection
   mc.py          -- prepgen main-chain (.mc) file writer
   amber.py       -- antechamber, prepgen, parmchk2 runner; atom name remapping
+  react.py       -- two-residue reaction parameterization (craft-react-*)
   slurm.py       -- SLURM batch script generator
   cli.py         -- craft-* command entry points
   check.py       -- environment checker (craft-check)
