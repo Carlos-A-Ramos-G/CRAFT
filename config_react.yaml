@@ -1,0 +1,76 @@
+# CRAFT reaction configuration reference
+#
+# Copy this file, fill in the values for your two residues, and save it as
+# config.yaml in your working directory.  Use this template when parameterizing
+# two residues that form a covalent bond through their side chains — disulfide
+# bonds, isopeptide bonds, NOS bonds (Lys–Cys), acylation of Ser/Cys, etc.
+#
+# For single-residue parameterization use config.yaml instead.
+#
+# Both residues must have position: middle (cterm/nterm not yet supported).
+#
+# -- Commands ------------------------------------------------------------------
+#
+#   Phase 1 (local):
+#     craft-react-run --config config.yaml
+#
+#   Phase 2b (local, after opt log arrives from HPC):
+#     craft-hf-input <r1>/<r2>/<r1>_<r2>_react_opt.log \
+#                    --charge <total> --config config.yaml
+#
+#   Phase 3 (local, after HF log arrives from HPC):
+#     craft-react-amber <r1>/<r2>/<r1>_<r2>_react_hf.log --config config.yaml
+#
+# -- Output layout -------------------------------------------------------------
+#
+#   <resname1>/<resname2>/
+#     <r1>_<r2>_react_combined.pdb     combined model compound (4 cap groups)
+#     <r1>_<r2>_react_opt.com          frozen-backbone Gaussian opt input
+#     resp.in, resp.qin, rename_map.json
+#     <r1>_<r2>_react.ac
+#     <r1>_<r2>_react_gaff.frcmod      shared for both residues
+#     <r1>_<r2>_react_ff14SB.frcmod    shared for both residues
+#     <resname1>/
+#       <resname1>_capped.pdb, <resname1>.mc, <resname1>.prepin
+#     <resname2>/
+#       <resname2>_capped.pdb, <resname2>.mc, <resname2>.prepin
+
+# -- Residue 1 -----------------------------------------------------------------
+residue1:
+  input_pdb: RES1/RES1.pdb   # raw (uncapped) single-residue PDB
+  charge: 0                  # formal charge of this residue in the bonded state
+  position: middle           # only 'middle' is supported
+
+# -- Residue 2 -----------------------------------------------------------------
+residue2:
+  input_pdb: RES2/RES2.pdb   # raw (uncapped) single-residue PDB
+  charge: 0                  # formal charge of this residue in the bonded state
+  position: middle           # only 'middle' is supported
+                             # total QM charge = residue1.charge + residue2.charge
+                             # each value is written to that residue's .mc CHARGE field
+
+# -- Reaction ------------------------------------------------------------------
+reaction:
+  atom1: SG                  # reactive atom name in residue1
+  atom2: NZ                  # reactive atom name in residue2
+  bond_length: 1.5           # Å (optional; default 1.5); ignored if combined_pdb is set
+  combined_pdb:              # optional: path to a pre-assembled bonded PDB
+                             # CRAFT splits it by residue name, adds the four ACE/NME
+                             # cap groups preserving all coordinates, and continues with
+                             # the frozen-backbone optimisation. The CRAFT assembly step
+                             # is skipped; the Gaussian geometry optimisation is not.
+
+# -- Phase 1b: frozen-backbone geometry optimisation (B3LYP/6-31G*) -----------
+gaussian_opt:
+  nproc: 16
+  mem: 512MB
+
+# -- Phase 2: HF/6-31G(d) single-point for ESP/RESP ---------------------------
+gaussian_hf:
+  nproc: 16
+  mem: 512MB
+
+# -- Phase 3: AMBER parameterization ------------------------------------------
+amber:
+  atom_type: amber           # amber | gaff | gaff2  (passed to antechamber -at)
+  forcefield: ff14SB         # ff14SB | ff19SB | ~  (~ to skip; requires $AMBERHOME)
