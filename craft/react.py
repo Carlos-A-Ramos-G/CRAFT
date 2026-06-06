@@ -4,7 +4,7 @@ Two-residue side-chain reaction parameterization.
 
 Workflow
 --------
-Phase 1  – craft-react-run
+Phase 1  – craft-run --config config.yaml
              cap each residue independently (ACE/NME on backbone)
              assemble combined model compound with unique atom names
              write frozen-backbone Gaussian opt input
@@ -12,7 +12,7 @@ Phase 1  – craft-react-run
 Phase 2a – g16 < <r1>_<r2>_react_opt.com > <r1>_<r2>_react_opt.log
 Phase 2b – craft-hf-input <r1>_<r2>_react_opt.log --charge <total> --config config.yaml
 Phase 2c – g16 < <r1>_<r2>_react_hf.com  > <r1>_<r2>_react_hf.log
-Phase 3  – craft-react-amber <r1>_<r2>_react_hf.log --config config.yaml
+Phase 3  – craft-amber <r1>_<r2>_react_hf.log --config config.yaml
 
 ResSeq conventions in the combined PDB
 ---------------------------------------
@@ -24,7 +24,7 @@ Atom naming
 All atom names in the combined PDB are globally unique. Residue2 atoms that
 conflict with residue1 names get a numeric suffix (N→N2, CA→CA2, etc.).
 The rename_map {renamed→original} is saved to rename_map.json so that
-craft-react-amber can restore original names in residue2's .prepin after prepgen.
+craft-amber can restore original names in residue2's .prepin after prepgen.
 
 antechamber is run on the combined HF log (not per-residue) so that the reactive
 atom at the bond interface receives the correct AMBER atom type for its bonded

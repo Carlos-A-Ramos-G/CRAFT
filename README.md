@@ -175,7 +175,7 @@ The SLURM script has absolute paths baked in at generation time, so it runs corr
 
 ## Side-chain reaction parameterization
 
-`craft-react-run` and `craft-react-amber` handle pairs of residues that form a covalent bond through their side chains — disulfide bonds, isopeptide bonds, NOS bonds (Lys–Cys), acylation of Ser or Cys, and similar cross-links. Both residues are parameterized jointly: RESP charges are fitted on the assembled bonded system so that mutual polarization across the new bond is captured, and `antechamber` sees the full bonded geometry to assign correct atom types at the reactive interface. Separate `.prepin` files are produced for each residue; the cross-link bond itself is declared in tleap.
+`craft-run` and `craft-amber` handle pairs of residues that form a covalent bond through their side chains — disulfide bonds, isopeptide bonds, NOS bonds (Lys–Cys), acylation of Ser or Cys, and similar cross-links — when the config file contains `residue1`, `residue2`, and `reaction` keys. Both residues are parameterized jointly: RESP charges are fitted on the assembled bonded system so that mutual polarization across the new bond is captured, and `antechamber` sees the full bonded geometry to assign correct atom types at the reactive interface. Separate `.prepin` files are produced for each residue; the cross-link bond itself is declared in tleap.
 
 ### Config
 
@@ -271,13 +271,13 @@ residue1.pdb  residue2.pdb             combined.pdb (bonded, no caps)
 
 ```bash
 # Phase 1 -- local
-craft-react-run --config config.yaml
+craft-run --config config.yaml
 
 # Phase 2b -- after opt log arrives from HPC
-craft-hf-input <r1>/<r2>/<r1>_<r2>_react_opt.log --charge <total> --config config.yaml
+craft-hf-input <r1>_<r2>/<r1>_<r2>_react_opt.log --charge <total> --config config.yaml
 
 # Phase 3 -- after HF log arrives from HPC
-craft-react-amber <r1>/<r2>/<r1>_<r2>_react_hf.log --config config.yaml
+craft-amber <r1>_<r2>/<r1>_<r2>_react_hf.log --config config.yaml
 ```
 
 ### tleap
@@ -295,7 +295,7 @@ saveAmberParm mol mol.prmtop mol.inpcrd
 
 ### Current limitations
 
-Only `position: middle` is supported for both residues. The reaction code uses fixed resSeq values (2 for residue1, 5 for residue2) that are only valid for the ACE–residue–NME capping layout. `cterm` and `nterm` support will be added in a future release. `craft-react-run` exits with an error if either position is not `middle`.
+Only `position: middle` is supported for both residues. The reaction code uses fixed resSeq values (2 for residue1, 5 for residue2) that are only valid for the ACE–residue–NME capping layout. `cterm` and `nterm` support will be added in a future release. `craft-run` exits with an error if either position is not `middle` when using a reaction config.
 
 ### Pre-assembled geometry
 
@@ -321,10 +321,8 @@ The residue names in the combined PDB must match those inferred from `residue1.i
 | `craft-hf-input` | 2b | Extract optimised geometry, write HF `.com` |
 | `craft-amber` | 3 | Run espgen → resp → antechamber → prepgen → parmchk2 |
 | `craft-slurm` | — | Generate a single SLURM script for the full pipeline |
-| `craft-react-run` | 1 | Assemble two-residue reaction complex (from individual PDBs or a pre-assembled combined structure) and generate all pre-Gaussian inputs |
-| `craft-react-amber` | 3 | Run RESP + AMBER pipeline for the combined two-residue system |
-| `craft-react-run` | 1 | Assemble two-residue reaction complex (from individual PDBs or a pre-assembled combined structure) and generate all pre-Gaussian inputs |
-| `craft-react-amber` | 3 | Run RESP + AMBER pipeline for the combined two-residue system |
+
+Both commands also handle the two-residue reaction workflow when the config contains `residue1`/`residue2`/`reaction` keys instead of `residue`.
 
 All commands accept `--config <path>` (default: `config.yaml`) and require the config file to exist.
 
@@ -361,23 +359,9 @@ CLI flags override the corresponding config values.
 | `--resname <str>` | inferred from log filename | Residue name (overrides auto-detection) |
 | `--workdir <path>` | directory of `<hf.log>` | Directory where AMBER output is written |
 
-**`craft-react-run --config <path>`**
+When the config contains `residue1`/`residue2`/`reaction` keys, `craft-run` and `craft-amber` automatically switch to reaction mode. `craft-run` reads all inputs from the config; `craft-amber` accepts the same flags as the single-residue case (`--charge`, `--workdir`) while `--resname` is ignored.
 
-Reads all inputs from the config file. No other flags.
-
-**`craft-react-amber <hf.log> [options]`**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--config <path>` | `config.yaml` | Config file (required) |
-| `-c`, `--charge <int>` | sum of residue1 + residue2 charges from config | Override total molecular charge |
-| `--workdir <path>` | directory of `<hf.log>` | Directory where AMBER output is written |
-
-**`craft-react-run --config <path>`**
-
-Reads all inputs from the config file. No other flags. Exits with an error if either residue has `position` other than `middle`.
-
-**`craft-react-amber <hf.log> [options]`**
+**`craft-amber <hf.log> [options]` — reaction mode**
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -441,7 +425,7 @@ slurm:
                               # and that has numpy/pyyaml; leave blank if not needed
 ```
 
-**Reaction config (`craft-react-run` / `craft-react-amber`)**
+**Reaction config (`craft-run` / `craft-amber` in reaction mode)**
 
 ```yaml
 residue1:
@@ -487,7 +471,7 @@ craft/
   resp.py        -- resp.in / resp.qin generation, RESP equivalence detection
   mc.py          -- prepgen main-chain (.mc) file writer
   amber.py       -- antechamber, prepgen, parmchk2 runner; atom name remapping
-  react.py       -- two-residue reaction parameterization (craft-react-*)
+  react.py       -- two-residue reaction parameterization (reaction mode of craft-run/craft-amber)
   slurm.py       -- SLURM batch script generator
   cli.py         -- craft-* command entry points
   check.py       -- environment checker (craft-check)

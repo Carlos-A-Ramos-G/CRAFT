@@ -12,18 +12,22 @@
 # -- Commands ------------------------------------------------------------------
 #
 #   Phase 1 (local):
-#     craft-react-run --config config.yaml
+#     craft-run --config config.yaml
 #
 #   Phase 2b (local, after opt log arrives from HPC):
-#     craft-hf-input <r1>/<r2>/<r1>_<r2>_react_opt.log \
+#     craft-hf-input <r1>_<r2>/<r1>_<r2>_react_opt.log \
 #                    --charge <total> --config config.yaml
 #
 #   Phase 3 (local, after HF log arrives from HPC):
-#     craft-react-amber <r1>/<r2>/<r1>_<r2>_react_hf.log --config config.yaml
+#     craft-amber <r1>_<r2>/<r1>_<r2>_react_hf.log --config config.yaml
+#
+#   Single SLURM job (full pipeline):
+#     craft-slurm --config config.yaml
+#     cd <r1>_<r2> && sbatch <r1>_<r2>_react_craft.sh
 #
 # -- Output layout -------------------------------------------------------------
 #
-#   <resname1>/<resname2>/
+#   <resname1>_<resname2>/
 #     <r1>_<r2>_react_combined.pdb     combined model compound (4 cap groups)
 #     <r1>_<r2>_react_opt.com          frozen-backbone Gaussian opt input
 #     resp.in, resp.qin, rename_map.json
@@ -37,13 +41,15 @@
 
 # -- Residue 1 -----------------------------------------------------------------
 residue1:
-  input_pdb: RES1/RES1.pdb   # raw (uncapped) single-residue PDB
+  input_pdb: RES1/RES1.pdb   # raw (uncapped) single-residue PDB; optional if
+                             # reaction.combined_pdb is set (names auto-detected)
   charge: 0                  # formal charge of this residue in the bonded state
   position: middle           # only 'middle' is supported
 
 # -- Residue 2 -----------------------------------------------------------------
 residue2:
-  input_pdb: RES2/RES2.pdb   # raw (uncapped) single-residue PDB
+  input_pdb: RES2/RES2.pdb   # raw (uncapped) single-residue PDB; optional if
+                             # reaction.combined_pdb is set (names auto-detected)
   charge: 0                  # formal charge of this residue in the bonded state
   position: middle           # only 'middle' is supported
                              # total QM charge = residue1.charge + residue2.charge
@@ -74,3 +80,17 @@ gaussian_hf:
 amber:
   atom_type: amber           # amber | gaff | gaff2  (passed to antechamber -at)
   forcefield: ff14SB         # ff14SB | ff19SB | ~  (~ to skip; requires $AMBERHOME)
+
+# -- SLURM (used by craft-slurm) ----------------------------------------------
+slurm:
+  job_name:               # leave blank -> <r1>_<r2>_react_craft
+  output: param_%j.out
+  error:  param_%j.err
+  ntasks: 1
+  cpus_per_task: 16
+  account: YOUR_ACCOUNT
+  partition: YOUR_PARTITION
+  modules:
+    - apps/gaussian/g16
+    - apps/amber/24               # needed for espgen, resp, antechamber, parmchk2
+  conda_env:              # conda environment with numpy/pyyaml and craft installed

@@ -21,13 +21,11 @@ dependencies = [
 rdkit = ["rdkit>=2022.03"]
 
 [project.scripts]
-craft-run         = "craft.cli:run"
-craft-hf-input    = "craft.cli:hf_input"
-craft-amber       = "craft.cli:amber"
-craft-slurm       = "craft.cli:slurm"
-craft-check       = "craft.cli:check"
-craft-react-run   = "craft.cli:react_run"
-craft-react-amber = "craft.cli:react_amber"
+craft-run      = "craft.cli:run"
+craft-hf-input = "craft.cli:hf_input"
+craft-amber    = "craft.cli:amber"
+craft-slurm    = "craft.cli:slurm"
+craft-check    = "craft.cli:check"
 
 [project.urls]
 Repository = "https://github.com/Carlos-A-Ramos-G/CRAFT"
