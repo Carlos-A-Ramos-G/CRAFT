@@ -60,11 +60,13 @@ reaction:
   atom1: SG                  # reactive atom name in residue1
   atom2: NZ                  # reactive atom name in residue2
   bond_length: 1.5           # Å (optional; default 1.5); ignored if combined_pdb is set
-  combined_pdb:              # optional: path to a pre-assembled bonded PDB
-                             # CRAFT splits it by residue name, adds the four ACE/NME
-                             # cap groups preserving all coordinates, and continues with
-                             # the frozen-backbone optimisation. The CRAFT assembly step
-                             # is skipped; the Gaussian geometry optimisation is not.
+  combined_pdb:              # optional: path to a pre-capped combined PDB that
+                             # already contains both residues capped with ACE/NME
+                             # (6 groups with resSeq 1-6: ACE/res1/NME/ACE/res2/NME).
+                             # CRAFT renames conflicting atoms in the second residue
+                             # block automatically — no manual renaming needed.
+                             # The geometry optimisation is not skipped; only the
+                             # CRAFT cap-and-assemble step is.
 
 # -- Phase 1b: frozen-backbone geometry optimisation (B3LYP/6-31G*) -----------
 gaussian_opt:

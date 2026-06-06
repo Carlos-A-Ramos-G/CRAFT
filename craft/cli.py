@@ -120,7 +120,7 @@ def _run_react(cfg, args):
     from pathlib import Path
     from craft import cap
     from craft.gaussian import NPROC_DEFAULT, MEM_DEFAULT
-    from craft.react import (assemble_react_pdb, _split_combined_pdb,
+    from craft.react import (assemble_react_pdb, _prepare_user_combined_pdb,
                               write_react_com, write_react_resp_in,
                               write_react_resp_qin, write_react_mc)
 
@@ -171,21 +171,9 @@ def _run_react(cfg, args):
 
     if combined_input:
         print("=" * 60)
-        print("Steps 1+2 -- Cap residues from pre-assembled structure")
+        print("Steps 1-3 -- Load pre-capped combined structure")
         print("=" * 60)
-        split1 = str(sub1 / f"{resname1}_split.pdb")
-        split2 = str(sub2 / f"{resname2}_split.pdb")
-        _split_combined_pdb(combined_input, resname1, resname2, split1, split2)
-        cap(split1, capped1, position=position1)
-        cap(split2, capped2, position=position2)
-
-        print()
-        print("=" * 60)
-        print("Step 3 -- Assemble with caps, preserving pre-assembled geometry")
-        print("=" * 60)
-        _, _, rename_map = assemble_react_pdb(
-            capped1, capped2, atom1, atom2,
-            skip_reposition=True, output=combined_pdb)
+        rename_map = _prepare_user_combined_pdb(combined_input, combined_pdb)
     else:
         print("=" * 60)
         print(f"Step 1 -- Cap {resname1}  [{position1}]")

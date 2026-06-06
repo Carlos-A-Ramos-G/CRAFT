@@ -291,6 +291,79 @@ def _make_unique_names(atoms1, atoms2):
     return list(atoms1), renamed, rename_map
 
 
+def _prepare_user_combined_pdb(combined_pdb, output_pdb):
+    """
+    Read a user-supplied pre-capped combined PDB, ensure atom names are globally
+    unique across the two residue blocks, and write the result to output_pdb.
+
+    ResSeq convention (user's responsibility):
+      1 = ACE(res1)   2 = res1   3 = NME(res1)
+      4 = ACE(res2)   5 = res2   6 = NME(res2)
+
+    Renaming is done in two passes to exactly match what cap() + assemble_react_pdb
+    produce from separate PDB files:
+      1. Within each block, cap atoms (ACE/NME) that conflict with the residue
+         atoms get the lowest available suffix k=1, 2, … (same as cap._cap_name).
+      2. Block-2 atoms that still conflict with anything in the fully-deduped
+         block-1 are renamed with suffix k=2, 3, … (same as _make_unique_names).
+
+    Returns rename_map {renamed_name → original_name} for atoms that were renamed.
+    """
+    atoms = parse_pdb(str(combined_pdb))
+    if not atoms:
+        raise ValueError(f"No ATOM/HETATM records in {combined_pdb}")
+
+    first  = [a for a in atoms if a['resSeq'] in (1, 2, 3)]
+    second = [a for a in atoms if a['resSeq'] in (4, 5, 6)]
+
+    if not first or not second:
+        raise ValueError(
+            f"Expected resSeq groups 1-3 and 4-6 in {combined_pdb}. "
+            f"Found resSeqs: {sorted({a['resSeq'] for a in atoms})}. "
+            f"The combined PDB must follow CRAFT's resSeq convention: "
+            f"1=ACE(res1), 2=res1, 3=NME(res1), 4=ACE(res2), 5=res2, 6=NME(res2)."
+        )
+
+    def _dedup_caps(block, res_resseq):
+        # Rename cap atoms that conflict with the residue in this block,
+        # using the lowest k=1,2,… suffix — identical to cap()._cap_name.
+        # Residue atoms always keep their original names.
+        res_names = {a['name'] for a in block if a['resSeq'] == res_resseq}
+        used = set(res_names)
+        result = []
+        for a in block:
+            if a['resSeq'] == res_resseq:
+                result.append(a)
+            else:
+                name = a['name']
+                if name in used:
+                    k = 1
+                    while f"{name}{k}" in used:
+                        k += 1
+                    name = f"{name}{k}"
+                used.add(name)
+                result.append({**a, 'name': name})
+        return result
+
+    first_deduped  = _dedup_caps(first,  res_resseq=2)
+    second_deduped = _dedup_caps(second, res_resseq=5)
+
+    _, second_renamed, rename_map = _make_unique_names(first_deduped, second_deduped)
+
+    ser   = 1
+    lines = []
+    for a in first_deduped + second_renamed:
+        lines.append(pdb_line(ser, a['name'], a['resName'], a['resSeq'],
+                              (a['x'], a['y'], a['z']),
+                              a.get('occupancy', 1.0), a.get('tempFactor', 0.0)))
+        ser += 1
+    lines.append(f'TER   {ser:5d}\n')
+    lines.append('END\n')
+    Path(output_pdb).write_text(''.join(lines))
+    print(f"Combined   : {output_pdb}  ({ser - 1} atoms, {len(rename_map)} renamed)")
+    return rename_map
+
+
 def _split_combined_pdb(combined_pdb, resname1, resname2, out1, out2):
     """
     Split a user-supplied combined PDB into two single-residue PDB files.

@@ -167,7 +167,7 @@ export GAUSS_SCRDIR="$CRAFT_WD"
 {conda_block}
 cd "$PROJ_ROOT"
 
-# -- Phase 1: cap residues, assemble combined model, generate inputs -----------
+# -- Phase 1: prepare combined model and generate Gaussian/RESP inputs ---------
 echo "[$(date '+%H:%M:%S')] Phase 1 -- craft-run"
 craft-run --config "$CRAFT_CONFIG"
 [ $? -ne 0 ] && echo "ERROR in Phase 1" && exit 1
