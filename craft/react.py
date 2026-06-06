@@ -50,6 +50,12 @@ _CAP_RESSEQS         = {1, 3, 4, 6}
 _RES_RESSEQS         = {2, 5}
 _BACKBONE_NAMES      = {'N', 'CA', 'C', 'O'}
 
+# ResSeqs present in each block of the combined PDB, keyed by position.
+# Block 1 (residue1): middle=ACE+res+NME, cterm=ACE+res, nterm=res+NME
+# Block 2 (residue2): same logic but offset by 3 (resSeqs 4-6).
+_BLOCK1_RESSEQS = {'middle': {1, 2, 3}, 'cterm': {1, 2}, 'nterm': {2, 3}}
+_BLOCK2_RESSEQS = {'middle': {4, 5, 6}, 'cterm': {4, 5}, 'nterm': {5, 6}}
+
 # Ideal bond angles (degrees) at the reactive atom, keyed by element symbol.
 # Used when assembling two residues from individual PDBs.
 _IDEAL_ANGLE = {'C': 109.5, 'N': 109.5, 'O': 109.5, 'S': 103.0, 'P': 109.5}
@@ -291,14 +297,19 @@ def _make_unique_names(atoms1, atoms2):
     return list(atoms1), renamed, rename_map
 
 
-def _prepare_user_combined_pdb(combined_pdb, output_pdb):
+def _prepare_user_combined_pdb(combined_pdb, output_pdb,
+                               position1='middle', position2='middle'):
     """
     Read a user-supplied pre-capped combined PDB, ensure atom names are globally
     unique across the two residue blocks, and write the result to output_pdb.
 
     ResSeq convention (user's responsibility):
-      1 = ACE(res1)   2 = res1   3 = NME(res1)
-      4 = ACE(res2)   5 = res2   6 = NME(res2)
+      Block 1 — position1='middle': resSeq 1=ACE, 2=res1, 3=NME
+                position1='cterm' : resSeq 1=ACE, 2=res1          (no NME)
+                position1='nterm' : resSeq 2=res1, 3=NME           (no ACE)
+      Block 2 — position2='middle': resSeq 4=ACE, 5=res2, 6=NME
+                position2='cterm' : resSeq 4=ACE, 5=res2           (no NME)
+                position2='nterm' : resSeq 5=res2, 6=NME            (no ACE)
 
     Renaming is done in two passes to exactly match what cap() + assemble_react_pdb
     produce from separate PDB files:
@@ -313,15 +324,17 @@ def _prepare_user_combined_pdb(combined_pdb, output_pdb):
     if not atoms:
         raise ValueError(f"No ATOM/HETATM records in {combined_pdb}")
 
-    first  = [a for a in atoms if a['resSeq'] in (1, 2, 3)]
-    second = [a for a in atoms if a['resSeq'] in (4, 5, 6)]
+    b1_seqs = _BLOCK1_RESSEQS[position1]
+    b2_seqs = _BLOCK2_RESSEQS[position2]
+
+    first  = [a for a in atoms if a['resSeq'] in b1_seqs]
+    second = [a for a in atoms if a['resSeq'] in b2_seqs]
 
     if not first or not second:
         raise ValueError(
-            f"Expected resSeq groups 1-3 and 4-6 in {combined_pdb}. "
-            f"Found resSeqs: {sorted({a['resSeq'] for a in atoms})}. "
-            f"The combined PDB must follow CRAFT's resSeq convention: "
-            f"1=ACE(res1), 2=res1, 3=NME(res1), 4=ACE(res2), 5=res2, 6=NME(res2)."
+            f"Expected resSeq groups {sorted(b1_seqs)} and {sorted(b2_seqs)} in "
+            f"{combined_pdb} (position1={position1!r}, position2={position2!r}). "
+            f"Found resSeqs: {sorted({a['resSeq'] for a in atoms})}."
         )
 
     def _dedup_caps(block, res_resseq):

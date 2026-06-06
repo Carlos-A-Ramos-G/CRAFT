@@ -7,7 +7,6 @@
 #
 # For single-residue parameterization use config.yaml instead.
 #
-# Both residues must have position: middle (cterm/nterm not yet supported).
 #
 # -- Commands ------------------------------------------------------------------
 #
@@ -44,14 +43,14 @@ residue1:
   input_pdb: RES1/RES1.pdb   # raw (uncapped) single-residue PDB; optional if
                              # reaction.combined_pdb is set (names auto-detected)
   charge: 0                  # formal charge of this residue in the bonded state
-  position: middle           # only 'middle' is supported
+  position: middle           # middle | cterm | nterm
 
 # -- Residue 2 -----------------------------------------------------------------
 residue2:
   input_pdb: RES2/RES2.pdb   # raw (uncapped) single-residue PDB; optional if
                              # reaction.combined_pdb is set (names auto-detected)
   charge: 0                  # formal charge of this residue in the bonded state
-  position: middle           # only 'middle' is supported
+  position: middle           # middle | cterm | nterm
                              # total QM charge = residue1.charge + residue2.charge
                              # each value is written to that residue's .mc CHARGE field
 

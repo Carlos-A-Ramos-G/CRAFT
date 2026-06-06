@@ -137,12 +137,10 @@ def _run_react(cfg, args):
     position2 = res2_cfg.get('position', 'middle')
     combined_input = rxn_cfg.get('combined_pdb')
 
-    if position1 != 'middle' or position2 != 'middle':
-        sys.exit(
-            f"Error: the reaction workflow currently only supports position='middle' "
-            f"for both residues (cterm/nterm will be added in a future release). "
-            f"Got residue1={position1!r}, residue2={position2!r}."
-        )
+    for label, pos in (('residue1', position1), ('residue2', position2)):
+        if pos not in ('middle', 'cterm', 'nterm'):
+            sys.exit(f"Error: {label}.position must be 'middle', 'cterm', or 'nterm'; "
+                     f"got {pos!r}")
 
     resname1, resname2 = _resolve_react_resnames(cfg)
 
@@ -173,7 +171,8 @@ def _run_react(cfg, args):
         print("=" * 60)
         print("Steps 1-3 -- Load pre-capped combined structure")
         print("=" * 60)
-        rename_map = _prepare_user_combined_pdb(combined_input, combined_pdb)
+        rename_map = _prepare_user_combined_pdb(combined_input, combined_pdb,
+                                                position1, position2)
     else:
         print("=" * 60)
         print(f"Step 1 -- Cap {resname1}  [{position1}]")

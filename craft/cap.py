@@ -150,18 +150,22 @@ def inspect_termini(atoms, N_pos, C_pos):
 
     for i, a in enumerate(atoms):
         p = np.array([a['x'], a['y'], a['z']])
-        if a['name'].startswith('H') and np.linalg.norm(p - N_pos) < 1.3:
+        if (N_pos is not None and a['name'].startswith('H')
+                and np.linalg.norm(p - N_pos) < 1.3):
             h_on_N.append(i)
         if a['name'] in CTERM_ONAMES and np.linalg.norm(p - C_pos) < 1.6:
             oxt_idx.append(i)
 
     n = len(h_on_N)
-    n_label = {
-        0: 'bare N -- no H attached (cut from PDB, heavy atoms only)',
-        1: 'N-H -- single amide H (cut from PDB with H, or peptide fragment)',
-        2: 'NH2 -- neutral free N-terminus',
-        3: 'NH3+ -- zwitterionic free amino acid',
-    }.get(n, f'N with {n} H atoms (unusual)')
+    if N_pos is None:
+        n_label = 'N not present (nterm residue without backbone N)'
+    else:
+        n_label = {
+            0: 'bare N -- no H attached (cut from PDB, heavy atoms only)',
+            1: 'N-H -- single amide H (cut from PDB with H, or peptide fragment)',
+            2: 'NH2 -- neutral free N-terminus',
+            3: 'NH3+ -- zwitterionic free amino acid',
+        }.get(n, f'N with {n} H atoms (unusual)')
 
     if oxt_idx:
         oxt_name = atoms[oxt_idx[0]]['name']
@@ -228,14 +232,22 @@ def cap(input_pdb, output_pdb, position='middle'):
     for a in atoms:
         pos.setdefault(a['name'], np.array([a['x'], a['y'], a['z']]))
 
-    missing = [n for n in ('N', 'CA', 'C', 'O') if n not in pos]
+    # N is only needed when placing ACE (middle / cterm).
+    # O is only needed when placing NME (middle / nterm).
+    required = (['N'] if position != 'nterm' else []) + ['CA', 'C'] + \
+               (['O'] if position != 'cterm' else [])
+    missing = [n for n in required if n not in pos]
     if missing:
         raise ValueError(
             f"Missing backbone atom(s): {missing}\n"
-            "The input PDB must contain N, CA, C, and O backbone atoms."
+            f"The input PDB must contain {', '.join(required)} backbone atoms "
+            f"for position='{position}'."
         )
 
-    N, CA, C, O = pos['N'], pos['CA'], pos['C'], pos['O']
+    N  = pos.get('N')  # None for nterm residues without a backbone N
+    CA = pos['CA']
+    C  = pos['C']
+    O  = pos.get('O')  # None for cterm residues without a backbone carbonyl O
     resName = atoms[0]['resName']
 
     h_on_N, oxt_idx, n_label, c_label = inspect_termini(atoms, N, C)
@@ -244,14 +256,16 @@ def cap(input_pdb, output_pdb, position='middle'):
 
     # -- Detect ring nitrogen (e.g. proline): non-H, non-CA heavy atom bonded to N
     # Purely geometric — works for any proline-like residue without name checks.
+    # Skipped when N is absent (nterm residues without backbone N).
     ring_nbr = None
-    for _a in atoms:
-        if _a['name'] in ('N', 'CA', 'C', 'O') or _a['name'].startswith('H'):
-            continue
-        _p = np.array([_a['x'], _a['y'], _a['z']])
-        if np.linalg.norm(_p - N) < 1.6:
-            ring_nbr = _p
-            break
+    if N is not None:
+        for _a in atoms:
+            if _a['name'] in ('N', 'CA', 'C', 'O') or _a['name'].startswith('H'):
+                continue
+            _p = np.array([_a['x'], _a['y'], _a['z']])
+            if np.linalg.norm(_p - N) < 1.6:
+                ring_nbr = _p
+                break
 
     # -- Determine which atoms to remove and whether to inject amide H --------
     if position == 'nterm':
