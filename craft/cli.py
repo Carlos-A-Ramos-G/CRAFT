@@ -36,9 +36,12 @@ def _resolve_react_resnames(cfg, workdir=None):
     Return (resname1, resname2) from a reaction config.
 
     Resolution order:
-      1. residue1.input_pdb / residue2.input_pdb  (both must be set)
-      2. reaction.combined_pdb  (auto-detect from file)
+      1. reaction.combined_pdb  (takes priority; auto-detect residue names from file)
+      2. residue1.input_pdb / residue2.input_pdb  (both must be set)
       3. glob *_react_combined.pdb in workdir  (phase-3 fallback; requires workdir)
+
+    A warning is printed when both combined_pdb and input_pdb fields are set,
+    since they are mutually exclusive — combined_pdb wins.
     """
     from craft import get_resname
     from pathlib import Path
@@ -47,20 +50,23 @@ def _resolve_react_resnames(cfg, workdir=None):
     res2_cfg = cfg['residue2']
     pdb1 = res1_cfg.get('input_pdb')
     pdb2 = res2_cfg.get('input_pdb')
-
-    if pdb1 and pdb2:
-        return get_resname(pdb1), get_resname(pdb2)
-
     combined_pdb = cfg.get('reaction', {}).get('combined_pdb')
+
     if combined_pdb:
+        if pdb1 or pdb2:
+            print("  Warning: reaction.combined_pdb is set — "
+                  "residue1.input_pdb and residue2.input_pdb will be ignored.")
         rns = _resnames_from_pdb(combined_pdb)
         if len(rns) != 2:
             sys.exit(
                 f"Error: expected exactly 2 residue names in {combined_pdb}, "
                 f"found {len(rns)}: {rns}. "
-                f"Set residue1.input_pdb and residue2.input_pdb explicitly."
+                f"Set residue1.input_pdb and residue2.input_pdb instead."
             )
         return tuple(rns)
+
+    if pdb1 and pdb2:
+        return get_resname(pdb1), get_resname(pdb2)
 
     if workdir is not None:
         candidates = list(Path(workdir).glob('*_react_combined.pdb'))

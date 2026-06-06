@@ -113,7 +113,7 @@ def _split_combined_pdb(combined_pdb, resname1, resname2, out1, out2):
 
 
 def assemble_react_pdb(capped_pdb1, capped_pdb2, atom1, atom2,
-                       bond_length=1.5, output=None, skip_reposition=False):
+                       bond_length=None, output=None, skip_reposition=False):
     """
     Combine two capped single-residue PDBs into one model compound.
 
@@ -151,13 +151,15 @@ def assemble_react_pdb(capped_pdb1, capped_pdb2, atom1, atom2,
     if skip_reposition:
         atoms2_shifted = list(atoms2)
     else:
+        bl = bond_length if bond_length is not None else 1.5
+
         ca1   = next(a for a in atoms1 if a['resSeq'] == 2 and a['name'] == 'CA')
         bond1 = next(a for a in atoms1 if a['resSeq'] == 2 and a['name'] == atom1)
         bond2 = next(a for a in atoms2 if a['resSeq'] == 2 and a['name'] == atom2)
 
         direction = _pos(bond1) - _pos(ca1)
         direction /= np.linalg.norm(direction)
-        delta = (_pos(bond1) + bond_length * direction) - _pos(bond2)
+        delta = (_pos(bond1) + bl * direction) - _pos(bond2)
 
         atoms2_shifted = [{**a, 'x': a['x'] + delta[0],
                                 'y': a['y'] + delta[1],
