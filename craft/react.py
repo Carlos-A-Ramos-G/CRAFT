@@ -50,9 +50,16 @@ _CAP_RESSEQS         = {1, 3, 4, 6}
 _RES_RESSEQS         = {2, 5}
 _BACKBONE_NAMES      = {'N', 'CA', 'C', 'O'}
 
+# Ideal bond angles (degrees) at the reactive atom, keyed by element symbol.
+# Used when assembling two residues from individual PDBs.
+_IDEAL_ANGLE = {'C': 109.5, 'N': 109.5, 'O': 109.5, 'S': 103.0, 'P': 109.5}
+
+# Van der Waals radii (Å) used for inter-residue clash scoring.
+_VDW_RADII = {'C': 1.70, 'N': 1.55, 'O': 1.52, 'S': 1.80, 'H': 1.20}
+
 
 def _pos(a):
-    return np.array([a['x'], a['y'], a['z']])
+    return np.array([a['x'], a['y'], a['z']], dtype=float)
 
 
 def _base_name(name):
@@ -60,6 +67,204 @@ def _base_name(name):
     Safe for backbone identification because no standard sidechain atom
     (ND, CG, OE, …) degrades to a backbone name (N, CA, C, O)."""
     return name.rstrip('0123456789')
+
+
+def _vdw_r(atom_name):
+    return _VDW_RADII.get(_elem(atom_name), 1.70)
+
+
+def _rodrigues(v, axis, theta):
+    """Rotate vector v around unit-vector axis by angle theta (radians)."""
+    c, s = np.cos(theta), np.sin(theta)
+    return v * c + np.cross(axis, v) * s + axis * np.dot(axis, v) * (1.0 - c)
+
+
+def _sidechain_parent(atoms, reactive_name, resseq, max_bond=2.1):
+    """Return the nearest heavy non-backbone atom in resseq bonded to reactive_name."""
+    target = next(a for a in atoms if a['resSeq'] == resseq and a['name'] == reactive_name)
+    tp = _pos(target)
+    exclude = {'N', 'CA', 'C', 'O', reactive_name}
+    best_d, best_a = np.inf, None
+    for a in atoms:
+        if a['resSeq'] != resseq or a['name'] in exclude or _elem(a['name']) == 'H':
+            continue
+        d = np.linalg.norm(_pos(a) - tp)
+        if d < max_bond and d < best_d:
+            best_d, best_a = d, a
+    return best_a
+
+
+def _angle_placement(atoms1, atoms2, a1_name, a2_name, bl):
+    """
+    Translate atoms2 rigidly so that atom a2_name sits at distance bl from
+    a1_name and the parent1–atom1–atom2 angle equals the ideal bond angle for
+    atom1's element.  A perpendicular direction is chosen using the CA1 atom
+    to give a consistent (though arbitrary) initial torsion.
+
+    Returns a new atoms2 list with updated coordinates.
+    """
+    bond1  = next(a for a in atoms1 if a['resSeq'] == 2 and a['name'] == a1_name)
+    bond2  = next(a for a in atoms2 if a['resSeq'] == 2 and a['name'] == a2_name)
+    ca1    = next(a for a in atoms1 if a['resSeq'] == 2 and a['name'] == 'CA')
+    parent = _sidechain_parent(atoms1, a1_name, 2) or ca1
+
+    b1 = _pos(bond1)
+    u  = _pos(parent) - b1
+    u /= np.linalg.norm(u)                     # parent → atom1 unit vector
+
+    # perpendicular direction anchored to CA1 (Gram-Schmidt)
+    ref  = _pos(ca1) - b1
+    ref -= np.dot(ref, u) * u
+    if np.linalg.norm(ref) < 1e-6:             # CA1 is collinear: use global z
+        ref = np.array([0., 0., 1.]) - np.dot([0., 0., 1.], u) * u
+    perp = ref / np.linalg.norm(ref)
+
+    theta  = np.radians(_IDEAL_ANGLE.get(_elem(a1_name), 109.5))
+    d_new  = np.cos(theta) * u + np.sin(theta) * perp  # atom1 → atom2 direction
+    target = b1 + bl * d_new
+    delta  = target - _pos(bond2)
+
+    return [{**a, 'x': a['x'] + delta[0],
+                  'y': a['y'] + delta[1],
+                  'z': a['z'] + delta[2]} for a in atoms2]
+
+
+def _torsion_scan(atoms1, atoms2_placed, a1_name, a2_name, n_steps=36):
+    """
+    Rotate atoms2_placed around the atom1→atom2 bond axis to find the
+    orientation that minimises inter-residue Van der Waals clashes.
+
+    Clash score: sum of cubic overlaps (r1 + r2 - distance)³ for all
+    heavy-atom pairs between the two residues.
+
+    Returns the best atoms2 list (lowest clash score).
+    """
+    b1   = _pos(next(a for a in atoms1        if a['resSeq'] == 2 and a['name'] == a1_name))
+    b2   = _pos(next(a for a in atoms2_placed if a['resSeq'] == 2 and a['name'] == a2_name))
+    axis = (b2 - b1) / np.linalg.norm(b2 - b1)
+
+    # residue1 heavy atoms (vectorised for speed)
+    r1_pos = np.array([[a['x'], a['y'], a['z']]
+                       for a in atoms1 if _elem(a['name']) != 'H'])
+    r1_rad = np.array([_vdw_r(a['name'])
+                       for a in atoms1 if _elem(a['name']) != 'H'])
+
+    best_score, best_atoms = np.inf, atoms2_placed
+
+    for step in range(n_steps):
+        theta   = 2.0 * np.pi * step / n_steps
+        rotated = []
+        for a in atoms2_placed:
+            v   = np.array([a['x'], a['y'], a['z']]) - b1
+            v_r = _rodrigues(v, axis, theta) + b1
+            rotated.append({**a, 'x': v_r[0], 'y': v_r[1], 'z': v_r[2]})
+
+        score = 0.0
+        for a in rotated:
+            if _elem(a['name']) == 'H':
+                continue
+            p2  = np.array([a['x'], a['y'], a['z']])
+            ov  = (r1_rad + _vdw_r(a['name'])) - np.linalg.norm(r1_pos - p2, axis=1)
+            score += float(np.sum(ov[ov > 0] ** 3))
+
+        if score < best_score:
+            best_score, best_atoms = score, rotated
+
+    return best_atoms
+
+
+def _geometry_torsion(atoms1, atoms2, a1_name, a2_name, bl):
+    """Angle-corrected placement + torsion-scan clash minimisation (numpy only)."""
+    placed = _angle_placement(atoms1, atoms2, a1_name, a2_name, bl)
+    return _torsion_scan(atoms1, placed, a1_name, a2_name)
+
+
+def _geometry_rdkit(capped_pdb1, capped_pdb2, atoms1, atoms2, a1_name, a2_name, bl):
+    """
+    RDKit UFF geometry: angle-corrected initial placement, then UFF minimisation
+    with all cap atoms and backbone heavy atoms of both residues frozen.
+    Only the sidechains near the new bond are free to relax.
+
+    Raises ImportError if RDKit is not installed.
+    Raises RuntimeError if UFF setup fails (falls back to torsion scan in caller).
+    """
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
+
+    atoms2_init = _angle_placement(atoms1, atoms2, a1_name, a2_name, bl)
+
+    mol1 = Chem.MolFromPDBFile(str(capped_pdb1), removeHs=False, sanitize=False)
+    mol2 = Chem.MolFromPDBFile(str(capped_pdb2), removeHs=False, sanitize=False)
+    if mol1 is None or mol2 is None:
+        raise RuntimeError("RDKit could not parse the capped PDB files")
+
+    # update mol2 conformer with initial-placement coordinates (match by atom name)
+    init_xyz = {a['name']: (a['x'], a['y'], a['z']) for a in atoms2_init}
+    conf2 = mol2.GetConformer()
+    for i in range(mol2.GetNumAtoms()):
+        info = mol2.GetAtomWithIdx(i).GetMonomerInfo()
+        if info:
+            xyz = init_xyz.get(info.GetName().strip())
+            if xyz:
+                conf2.SetAtomPosition(i, xyz)
+
+    n1      = mol1.GetNumAtoms()
+    combined = Chem.RWMol(Chem.CombineMols(mol1, mol2))
+
+    def _find_by_name(name, start, stop):
+        for i in range(start, stop):
+            info = combined.GetAtomWithIdx(i).GetMonomerInfo()
+            if info and info.GetName().strip() == name:
+                return i
+        return None
+
+    idx1 = _find_by_name(a1_name, 0, n1)
+    idx2 = _find_by_name(a2_name, n1, combined.GetNumAtoms())
+    if idx1 is None or idx2 is None:
+        raise RuntimeError(f"Reactive atoms {a1_name!r}/{a2_name!r} not found in RDKit mol")
+
+    combined.AddBond(idx1, idx2, Chem.BondType.SINGLE)
+
+    # partial sanitization — don't fail on unusual residue atom types
+    Chem.SanitizeMol(combined,
+        Chem.SanitizeFlags.SANITIZE_FINDRADICALS  |
+        Chem.SanitizeFlags.SANITIZE_SETAROMATICITY |
+        Chem.SanitizeFlags.SANITIZE_SETCONJUGATION |
+        Chem.SanitizeFlags.SANITIZE_SETHYBRIDIZATION |
+        Chem.SanitizeFlags.SANITIZE_SYMMRINGS,
+        catchErrors=True)
+
+    mol_f = combined.GetMol()
+    ff = AllChem.UFFGetMoleculeForceField(mol_f)
+    if ff is None:
+        raise RuntimeError("UFF setup failed — atom types not recognized")
+
+    # freeze caps (ACE, NME) and backbone heavy atoms (N, CA, C, O) of both residues
+    _CAPS = {'ACE', 'NME'}
+    _BB   = {'N', 'CA', 'C', 'O'}
+    for i in range(mol_f.GetNumAtoms()):
+        info = mol_f.GetAtomWithIdx(i).GetMonomerInfo()
+        if info and (info.GetResidueName().strip() in _CAPS or
+                     info.GetName().strip() in _BB):
+            ff.AddFixedPoint(i)
+
+    ff.Minimize(maxIts=500)
+
+    # extract updated residue2 coordinates (match mol2 atom-name → rdkit index)
+    conf = mol_f.GetConformer()
+    rdkit_idx = {}
+    for i in range(mol2.GetNumAtoms()):
+        info = mol2.GetAtomWithIdx(i).GetMonomerInfo()
+        if info:
+            rdkit_idx[info.GetName().strip()] = n1 + i
+
+    result = list(atoms2)
+    for j, a in enumerate(atoms2):
+        ri = rdkit_idx.get(a['name'])
+        if ri is not None:
+            p = conf.GetAtomPosition(ri)
+            result[j] = {**a, 'x': p.x, 'y': p.y, 'z': p.z}
+    return result
 
 
 # -- PDB assembly --------------------------------------------------------------
@@ -117,13 +322,13 @@ def assemble_react_pdb(capped_pdb1, capped_pdb2, atom1, atom2,
     """
     Combine two capped single-residue PDBs into one model compound.
 
-    By default (skip_reposition=False) residue2 is translated so that atom2
-    sits at bond_length from atom1, along the extension of the CA1→atom1
-    vector.  When skip_reposition=True the coordinates of both PDBs are used
-    as-is; atom1, atom2, and bond_length are ignored.  Use skip_reposition
-    when the user has supplied a pre-assembled combined structure and the bond
-    geometry is already correct — only capping and atom-name uniqueness are
-    needed.
+    By default (skip_reposition=False) residue2 is repositioned so that atom2
+    bonds to atom1 at the correct distance AND bond angle.  If RDKit is
+    available a UFF minimisation (backbone frozen) is run to relax the
+    sidechain geometry; otherwise a numpy torsion scan finds the orientation
+    with the lowest inter-residue VdW clash.  When skip_reposition=True the
+    coordinates of both PDBs are used as-is (pre-assembled geometry path) and
+    atom1, atom2, and bond_length are ignored.
 
     Parameters
     ----------
@@ -148,22 +353,22 @@ def assemble_react_pdb(capped_pdb1, capped_pdb2, atom1, atom2,
     atoms1 = parse_pdb(capped_pdb1)
     atoms2 = parse_pdb(capped_pdb2)
 
+    geom_method = None
     if skip_reposition:
         atoms2_shifted = list(atoms2)
     else:
         bl = bond_length if bond_length is not None else 1.5
-
-        ca1   = next(a for a in atoms1 if a['resSeq'] == 2 and a['name'] == 'CA')
-        bond1 = next(a for a in atoms1 if a['resSeq'] == 2 and a['name'] == atom1)
-        bond2 = next(a for a in atoms2 if a['resSeq'] == 2 and a['name'] == atom2)
-
-        direction = _pos(bond1) - _pos(ca1)
-        direction /= np.linalg.norm(direction)
-        delta = (_pos(bond1) + bl * direction) - _pos(bond2)
-
-        atoms2_shifted = [{**a, 'x': a['x'] + delta[0],
-                                'y': a['y'] + delta[1],
-                                'z': a['z'] + delta[2]} for a in atoms2]
+        try:
+            atoms2_shifted = _geometry_rdkit(capped_pdb1, capped_pdb2,
+                                             atoms1, atoms2, atom1, atom2, bl)
+            geom_method = 'RDKit UFF'
+        except ImportError:
+            atoms2_shifted = _geometry_torsion(atoms1, atoms2, atom1, atom2, bl)
+            geom_method = 'torsion scan'
+        except RuntimeError as exc:
+            print(f"  Warning: RDKit geometry failed ({exc}) — using torsion scan")
+            atoms2_shifted = _geometry_torsion(atoms1, atoms2, atom1, atom2, bl)
+            geom_method = 'torsion scan'
 
     atoms1_out, atoms2_out, rename_map = _make_unique_names(atoms1, atoms2_shifted)
 
@@ -182,7 +387,8 @@ def assemble_react_pdb(capped_pdb1, capped_pdb2, atom1, atom2,
         lines.append(f'TER   {ser:5d}\n')
         lines.append('END\n')
         Path(output).write_text(''.join(lines))
-        print(f"Combined   : {output}  ({ser - 1} atoms, {len(rename_map)} renamed)")
+        geom_note = f'  geometry: {geom_method}' if geom_method else ''
+        print(f"Combined   : {output}  ({ser - 1} atoms, {len(rename_map)} renamed){geom_note}")
 
     return atoms1_out, atoms2_out, rename_map
 
@@ -455,7 +661,7 @@ def run_react_amber_pipeline(hf_log, resname1, resname2, total_charge,
     parameters for both residues and is loaded once in tleap.
     """
     import shutil, os
-    from .amber import _run, remap_ac_atom_names, PARM_FILES
+    from .amber import _run, remap_ac_atom_names, PARM_FILES, _postprocess_frcmod
 
     hf_log   = str(Path(hf_log).resolve())
     mc_file1 = str(Path(mc_file1).resolve())
@@ -523,11 +729,13 @@ def run_react_amber_pipeline(hf_log, resname1, resname2, total_charge,
 
     print("\n-- parmchk2 (GAFF) ---------------------------------------------------")
     _run(['parmchk2', '-i', ac_file, '-f', 'ac', '-o', gaff_frcmod], cwd=wd)
+    _postprocess_frcmod(Path(wd) / gaff_frcmod)
 
     if forcefield:
         print(f"\n-- parmchk2 ({forcefield}) {'-' * (51 - len(forcefield))}")
         _run(['parmchk2', '-i', ac_file, '-f', 'ac', '-o', ff_frcmod,
               '-a', 'Y', '-p', parm_file], cwd=wd)
+        _postprocess_frcmod(Path(wd) / ff_frcmod)
 
     output_files = [ac_file,
                     f"{resname1}/{resname1}.prepin",

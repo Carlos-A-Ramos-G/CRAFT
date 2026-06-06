@@ -38,6 +38,36 @@ def _run(cmd, cwd):
         )
 
 
+def _postprocess_frcmod(frcmod_path):
+    """
+    Post-process a parmchk2 frcmod in place:
+      - Remove lines containing 'ATTN, need revision' (zero placeholder parameters
+        that parmchk2 writes when it cannot locate any suitable parameter).
+      - Warn and list any parameters whose penalty score exceeds 100.
+    """
+    path  = Path(frcmod_path)
+    lines = path.read_text().splitlines(keepends=True)
+
+    clean        = []
+    high_penalty = []
+
+    for line in lines:
+        if 'ATTN' in line:
+            continue
+        m = re.search(r'penalty score=\s*([\d.]+)', line)
+        if m and float(m.group(1)) > 100:
+            high_penalty.append(line.rstrip())
+        clean.append(line)
+
+    path.write_text(''.join(clean))
+
+    if high_penalty:
+        print(f"\n  Warning: it's worth noticing that there are parameters with a "
+              f"penalty score above 100 in {path.name}:")
+        for ln in high_penalty:
+            print(f"    {ln.strip()}")
+
+
 def remap_ac_atom_names(ac_path, capped_pdb_path):
     """
     Rename atoms in an antechamber .ac file to match a capped PDB.
@@ -217,6 +247,7 @@ def run_amber_pipeline(hf_log, resname, charge, mc_file,
         '-f', 'ac',
         '-o', gaff_frcmod,
     ], cwd=wd)
+    _postprocess_frcmod(Path(wd) / gaff_frcmod)
 
     if forcefield:
         print(f"\n-- parmchk2 ({forcefield}) {'-' * (51 - len(forcefield))}")
@@ -228,6 +259,7 @@ def run_amber_pipeline(hf_log, resname, charge, mc_file,
             '-a', 'Y',
             '-p', parm_file,
         ], cwd=wd)
+        _postprocess_frcmod(Path(wd) / ff_frcmod)
 
     output_files = [ac_file, prepin_file, gaff_frcmod]
     if forcefield:
