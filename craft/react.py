@@ -303,13 +303,17 @@ def _prepare_user_combined_pdb(combined_pdb, output_pdb,
     Read a user-supplied pre-capped combined PDB, ensure atom names are globally
     unique across the two residue blocks, and write the result to output_pdb.
 
-    ResSeq convention (user's responsibility):
-      Block 1 — position1='middle': resSeq 1=ACE, 2=res1, 3=NME
-                position1='cterm' : resSeq 1=ACE, 2=res1          (no NME)
-                position1='nterm' : resSeq 2=res1, 3=NME           (no ACE)
-      Block 2 — position2='middle': resSeq 4=ACE, 5=res2, 6=NME
-                position2='cterm' : resSeq 4=ACE, 5=res2           (no NME)
-                position2='nterm' : resSeq 5=res2, 6=NME            (no ACE)
+    ResSeq convention: the PDB may use any residue numbering.  The only
+    requirement is that it contains the correct number of residue groups:
+      Block 1 — position1='middle': 3 groups (ACE, res1, NME)
+                position1='cterm' : 2 groups (ACE, res1)
+                position1='nterm' : 2 groups (res1, NME)
+      Block 2 — position2='middle': 3 groups (ACE, res2, NME)
+                position2='cterm' : 2 groups (ACE, res2)
+                position2='nterm' : 2 groups (res2, NME)
+    Groups are identified by sorting unique resSeq values; the first n1 belong
+    to block 1 and the remaining n2 to block 2.  Non-canonical numbers are
+    renumbered to the internal 1–6 scheme automatically.
 
     Renaming is done in two passes to exactly match what cap() + assemble_react_pdb
     produce from separate PDB files:
@@ -327,15 +331,30 @@ def _prepare_user_combined_pdb(combined_pdb, output_pdb,
     b1_seqs = _BLOCK1_RESSEQS[position1]
     b2_seqs = _BLOCK2_RESSEQS[position2]
 
+    n1 = len(b1_seqs)
+    n2 = len(b2_seqs)
+    sorted_seqs = sorted({a['resSeq'] for a in atoms})
+
+    if len(sorted_seqs) != n1 + n2:
+        raise ValueError(
+            f"Expected {n1 + n2} residue groups in {Path(combined_pdb).name} "
+            f"(position1={position1!r}: {n1}, position2={position2!r}: {n2}). "
+            f"Found {len(sorted_seqs)} resSeq(s): {sorted_seqs}."
+        )
+
+    # Renumber any non-canonical resSeqs to the canonical 1–6 scheme so that
+    # the rest of the pipeline (write_react_mc, prepgen, etc.) can use the
+    # expected resSeq values.  PDBs extracted from real structures keep the
+    # original chain numbering; this normalises them transparently.
+    canonical = sorted(b1_seqs) + sorted(b2_seqs)
+    if sorted_seqs != canonical:
+        reseq_map = dict(zip(sorted_seqs, canonical))
+        atoms = [{**a, 'resSeq': reseq_map[a['resSeq']]} for a in atoms]
+        mapping = ', '.join(f"{o}→{c}" for o, c in zip(sorted_seqs, canonical))
+        print(f"  resSeq renumbering: {mapping}")
+
     first  = [a for a in atoms if a['resSeq'] in b1_seqs]
     second = [a for a in atoms if a['resSeq'] in b2_seqs]
-
-    if not first or not second:
-        raise ValueError(
-            f"Expected resSeq groups {sorted(b1_seqs)} and {sorted(b2_seqs)} in "
-            f"{combined_pdb} (position1={position1!r}, position2={position2!r}). "
-            f"Found resSeqs: {sorted({a['resSeq'] for a in atoms})}."
-        )
 
     def _dedup_caps(block, res_resseq):
         # Rename cap atoms that conflict with the residue in this block,
