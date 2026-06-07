@@ -429,17 +429,18 @@ def _amber_react(cfg, args):
     print()
 
     run_react_amber_pipeline(
-        hf_log       = args.log,
-        resname1     = resname1,
-        resname2     = resname2,
-        total_charge = total_charge,
-        mc_file1     = mc1_file,
-        mc_file2     = mc2_file,
-        workdir      = workdir,
-        atom_type    = amb_cfg.get('atom_type', 'amber'),
-        forcefield   = amb_cfg.get('forcefield', 'ff14SB'),
-        combined_pdb = combined_pdb,
-        rename_map   = rename_map,
+        hf_log              = args.log,
+        resname1            = resname1,
+        resname2            = resname2,
+        total_charge        = total_charge,
+        mc_file1            = mc1_file,
+        mc_file2            = mc2_file,
+        workdir             = workdir,
+        atom_type           = amb_cfg.get('atom_type', 'amber'),
+        forcefield          = amb_cfg.get('forcefield', 'ff14SB'),
+        combined_pdb        = combined_pdb,
+        rename_map          = rename_map,
+        atom_type_overrides = amb_cfg.get('atom_type_overrides') or {},
     )
 
 
@@ -510,15 +511,16 @@ def amber():
     print()
 
     run_amber_pipeline(
-        hf_log     = args.log,
-        resname    = resname,
-        charge     = charge,
-        mc_file    = str(mc_file),
-        workdir    = workdir,
-        atom_type  = amb_cfg.get('atom_type', 'amber'),
-        forcefield = forcefield,
-        capped_pdb = capped_pdb,
-        position   = position,
+        hf_log              = args.log,
+        resname             = resname,
+        charge              = charge,
+        mc_file             = str(mc_file),
+        workdir             = workdir,
+        atom_type           = amb_cfg.get('atom_type', 'amber'),
+        forcefield          = forcefield,
+        capped_pdb          = capped_pdb,
+        position            = position,
+        atom_type_overrides = amb_cfg.get('atom_type_overrides') or {},
     )
 
 

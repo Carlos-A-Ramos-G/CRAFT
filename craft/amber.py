@@ -21,7 +21,24 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
+
+
+_GAFF2_TO_AMBER = {
+    'c':  'C',   'c1': 'CX', 'c2': 'CA', 'c3': 'CT', 'ca': 'CA',
+    'cb': 'CB',  'cc': 'CA', 'cd': 'CA', 'ce': 'CA', 'cf': 'CA',
+    'cp': 'CA',  'cq': 'CA',
+    'n':  'N',   'n1': 'N1', 'n2': 'N2', 'n3': 'N3', 'n4': 'N3',
+    'na': 'NA',  'nb': 'NA', 'nh': 'N2',
+    'o':  'O',   'oh': 'OH', 'os': 'OS', 'op': 'OS', 'oq': 'OS',
+    'sh': 'SH',  'ss': 'S',  's2': 'S',  's4': 'S',  's6': 'S',
+    'sx': 'S',   'sy': 'S',
+    'p2': 'P',   'p3': 'P',  'p4': 'P',  'p5': 'P',
+    'hc': 'HC',  'ha': 'HA', 'hn': 'H',  'ho': 'HO', 'hs': 'HS',
+    'hp': 'HP',  'h1': 'H1', 'h2': 'H2', 'h3': 'H3', 'h4': 'H4', 'h5': 'H5',
+    'f':  'F',   'cl': 'Cl', 'br': 'Br', 'i':  'I',
+}
 
 
 def _run(cmd, cwd):
@@ -128,6 +145,151 @@ def remap_ac_atom_names(ac_path, capped_pdb_path):
     return name_map
 
 
+def _read_ac_types(ac_path):
+    """Return {atom_name: atom_type} for every ATOM record in an .ac file."""
+    types = {}
+    for line in Path(ac_path).read_text().splitlines():
+        if line.startswith('ATOM'):
+            parts = line.split()
+            if len(parts) >= 10:
+                types[parts[2]] = parts[-1]
+    return types
+
+
+def _patch_ac_types(ac_path, corrections):
+    """Replace atom types in-place for the specified atom names."""
+    ac_path = Path(ac_path)
+    out = []
+    for line in ac_path.read_text().splitlines(keepends=True):
+        stripped = line.rstrip()
+        if stripped.startswith('ATOM'):
+            parts = stripped.split()
+            if len(parts) >= 10 and parts[2] in corrections:
+                trailing = line[len(stripped):]
+                stripped  = re.sub(r'\S+$', corrections[parts[2]], stripped)
+                line      = stripped + trailing
+        out.append(line)
+    ac_path.write_text(''.join(out))
+
+
+def resolve_du_atom_types(ac_path, hf_log, wd, bk_resname, total_charge,
+                          atom_type, user_overrides=None):
+    """
+    Scan ac_path for DU atom types, suggest corrections via a gaff2 probe run,
+    merge with user_overrides (overrides take priority), and patch the .ac file
+    in place.  Hard-stops if any DU atom cannot be resolved.
+    """
+    user_overrides = user_overrides or {}
+    ac_path        = Path(ac_path)
+
+    ac_types = _read_ac_types(ac_path)
+    du_names = [name for name, t in ac_types.items() if t == 'DU']
+    if not du_names:
+        return
+
+    print("\n-- resolving DU atom types -------------------------------------------")
+    print(f"  antechamber assigned DU to: {', '.join(du_names)}")
+
+    gaff2_types = {}
+    suggestions  = {}
+
+    if atom_type != 'gaff2':
+        print("  re-running with -at gaff2 to generate type suggestions ...")
+        probe_name = '_du_probe.ac'
+        probe_path = Path(wd) / probe_name
+        try:
+            _run([
+                'antechamber',
+                '-fi', 'gout', '-i', hf_log,
+                '-bk', bk_resname,
+                '-fo', 'ac',   '-o', probe_name,
+                '-c',  'rc',   '-cf', 'resp.chg',
+                '-at', 'gaff2',
+                '-nc', str(total_charge),
+            ], cwd=wd)
+            gaff2_types = _read_ac_types(probe_path)
+        except RuntimeError:
+            print("  Warning: gaff2 probe failed — auto-suggestions unavailable.")
+        finally:
+            probe_path.unlink(missing_ok=True)
+
+        for name in du_names:
+            g2 = gaff2_types.get(name, 'DU')
+            if g2 == 'DU':
+                continue
+            if atom_type == 'amber':
+                amber = _GAFF2_TO_AMBER.get(g2.lower())
+                if amber:
+                    suggestions[name] = amber
+            else:
+                suggestions[name] = g2
+    else:
+        print("  atom_type is gaff2 — probe would be identical; skipping auto-suggest.")
+
+    # Resolution table
+    w = max((len(n) for n in du_names), default=4) + 2
+    print()
+    if gaff2_types:
+        print(f"  {'Atom':<{w}} {'GAFF2':<8} {'Applied ({})'.format(atom_type):<22} Source")
+        print(f"  {'-'*w} {'-'*8} {'-'*22} {'-'*28}")
+        for name in du_names:
+            g2 = gaff2_types.get(name, '--')
+            if name in user_overrides:
+                auto = suggestions.get(name, '--')
+                apl  = user_overrides[name]
+                src  = f"config override  (auto: {auto})"
+            elif name in suggestions:
+                apl  = suggestions[name]
+                src  = "auto-suggestion"
+            else:
+                apl  = "--"
+                src  = "UNRESOLVED"
+            print(f"  {name:<{w}} {g2:<8} {apl:<22} {src}")
+    else:
+        print(f"  {'Atom':<{w}} {'Applied ({})'.format(atom_type):<22} Source")
+        print(f"  {'-'*w} {'-'*22} {'-'*28}")
+        for name in du_names:
+            if name in user_overrides:
+                print(f"  {name:<{w}} {user_overrides[name]:<22} config override")
+            else:
+                print(f"  {name:<{w}} {'--':<22} UNRESOLVED")
+
+    # Determine corrections
+    corrections = {}
+    unresolved  = []
+    for name in du_names:
+        if name in user_overrides:
+            corrections[name] = user_overrides[name]
+        elif name in suggestions:
+            corrections[name] = suggestions[name]
+        else:
+            unresolved.append(name)
+
+    if unresolved:
+        print()
+        print(f"  Error: unresolved DU type(s): {', '.join(unresolved)}")
+        print(f"  Add atom_type_overrides to your config:")
+        print(f"    amber:")
+        print(f"      atom_type_overrides:")
+        for name in unresolved:
+            g2_hint = gaff2_types.get(name, '?')
+            print(f"        {name}: <type>  # gaff2 assigned: {g2_hint}")
+        sys.exit(1)
+
+    auto_applied = {n: t for n, t in corrections.items() if n not in user_overrides}
+    if auto_applied:
+        print()
+        print("  Auto-suggestions applied. To override, add to config:")
+        print("    amber:")
+        print("      atom_type_overrides:")
+        for name, atype in auto_applied.items():
+            print(f"        {name}: {atype}")
+
+    _patch_ac_types(ac_path, corrections)
+    applied = ',  '.join(f"{n}: DU → {t}" for n, t in corrections.items())
+    print(f"\n  Patched {ac_path.name}: {applied}")
+
+
 PARM_FILES = {
     'ff14SB': 'parm10.dat',
     'ff19SB': 'parm19.dat',
@@ -136,7 +298,8 @@ PARM_FILES = {
 
 def run_amber_pipeline(hf_log, resname, charge, mc_file,
                        workdir='.', atom_type='amber', forcefield='ff14SB',
-                       capped_pdb=None, position='middle'):
+                       capped_pdb=None, position='middle',
+                       atom_type_overrides=None):
     """
     Run the full post-Gaussian parameterization pipeline.
 
@@ -222,6 +385,11 @@ def run_amber_pipeline(hf_log, resname, charge, mc_file,
         remap_ac_atom_names(Path(wd) / ac_file, _capped)
     else:
         print(f"  {_capped.name} not found -- atom names in {ac_file} not remapped.")
+
+    resolve_du_atom_types(
+        Path(wd) / ac_file, hf_log, wd,
+        resname, charge, atom_type, atom_type_overrides,
+    )
 
     # prepgen has a short fixed-length path buffer (~256 chars); long absolute
     # paths are silently truncated. Copy the .mc file into workdir and pass

@@ -743,7 +743,8 @@ def _restore_prepin_names(prepin_path, rename_map):
 def run_react_amber_pipeline(hf_log, resname1, resname2, total_charge,
                               mc_file1, mc_file2, workdir='.',
                               atom_type='amber', forcefield='ff14SB',
-                              combined_pdb=None, rename_map=None):
+                              combined_pdb=None, rename_map=None,
+                              atom_type_overrides=None):
     """
     Post-Gaussian AMBER pipeline for the combined two-residue system.
 
@@ -758,7 +759,8 @@ def run_react_amber_pipeline(hf_log, resname1, resname2, total_charge,
     parameters for both residues and is loaded once in tleap.
     """
     import shutil, os
-    from .amber import _run, remap_ac_atom_names, PARM_FILES, _postprocess_frcmod
+    from .amber import (_run, remap_ac_atom_names, PARM_FILES,
+                        _postprocess_frcmod, resolve_du_atom_types)
 
     hf_log   = str(Path(hf_log).resolve())
     mc_file1 = str(Path(mc_file1).resolve())
@@ -806,6 +808,11 @@ def run_react_amber_pipeline(hf_log, resname1, resname2, total_charge,
         remap_ac_atom_names(Path(wd) / ac_file, combined_pdb)
     else:
         print("  combined PDB not found -- atom names in .ac not remapped.")
+
+    resolve_du_atom_types(
+        Path(wd) / ac_file, hf_log, wd,
+        resname1, total_charge, atom_type, atom_type_overrides,
+    )
 
     for resname, mc_file in [(resname1, mc_file1), (resname2, mc_file2)]:
         sub_dir  = Path(wd) / resname

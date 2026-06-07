@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "craft-amber"
-version = "0.6.1"
+version = "0.6.2"
 description = "Custom Residue AMBER Forcefield Toolkit"
 readme = "README.md"
 license = { file = "LICENSE" }
