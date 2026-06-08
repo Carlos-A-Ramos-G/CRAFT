@@ -1,6 +1,6 @@
 """
-craft.react
-Two-residue side-chain reaction parameterization.
+craft.bond
+Two-residue covalent parameterization.
 
 Workflow
 --------
@@ -9,10 +9,10 @@ Phase 1  – craft-run --config config.yaml
              assemble combined model compound with unique atom names
              write frozen-backbone Gaussian opt input
              write resp.in / resp.qin / two .mc files
-Phase 2a – g16 < <r1>_<r2>_react_opt.com > <r1>_<r2>_react_opt.log
-Phase 2b – craft-hf-input <r1>_<r2>_react_opt.log --charge <total> --config config.yaml
-Phase 2c – g16 < <r1>_<r2>_react_hf.com  > <r1>_<r2>_react_hf.log
-Phase 3  – craft-amber <r1>_<r2>_react_hf.log --config config.yaml
+Phase 2a – g16 < <r1>_<r2>_bond_opt.com > <r1>_<r2>_bond_opt.log
+Phase 2b – craft-hf-input <r1>_<r2>_bond_opt.log --charge <total> --config config.yaml
+Phase 2c – g16 < <r1>_<r2>_bond_hf.com  > <r1>_<r2>_bond_hf.log
+Phase 3  – craft-amber <r1>_<r2>_bond_hf.log --config config.yaml
 
 ResSeq conventions in the combined PDB
 ---------------------------------------
@@ -45,7 +45,7 @@ from .resp import (
 )
 
 
-_REACT_ROUTE_DEFAULT = "#P b3lyp/6-31g* opt(modredundant)"
+_BOND_ROUTE_DEFAULT = "#P b3lyp/6-31g* opt(modredundant)"
 _CAP_RESSEQS         = {1, 3, 4, 6}
 _RES_RESSEQS         = {2, 5}
 _BACKBONE_NAMES      = {'N', 'CA', 'C', 'O'}
@@ -315,7 +315,7 @@ def _prepare_user_combined_pdb(combined_pdb, output_pdb,
     to block 1 and the remaining n2 to block 2.  Non-canonical numbers are
     renumbered to the internal 1–6 scheme automatically.
 
-    Renaming is done in two passes to exactly match what cap() + assemble_react_pdb
+    Renaming is done in two passes to exactly match what cap() + assemble_bond_pdb
     produce from separate PDB files:
       1. Within each block, cap atoms (ACE/NME) that conflict with the residue
          atoms get the lowest available suffix k=1, 2, … (same as cap._cap_name).
@@ -343,7 +343,7 @@ def _prepare_user_combined_pdb(combined_pdb, output_pdb,
         )
 
     # Renumber any non-canonical resSeqs to the canonical 1–6 scheme so that
-    # the rest of the pipeline (write_react_mc, prepgen, etc.) can use the
+    # the rest of the pipeline (write_bond_mc, prepgen, etc.) can use the
     # expected resSeq values.  PDBs extracted from real structures keep the
     # original chain numbering; this normalises them transparently.
     canonical = sorted(b1_seqs) + sorted(b2_seqs)
@@ -422,7 +422,7 @@ def _split_combined_pdb(combined_pdb, resname1, resname2, out1, out2):
         Path(out).write_text(''.join(lines))
 
 
-def assemble_react_pdb(capped_pdb1, capped_pdb2, atom1, atom2,
+def assemble_bond_pdb(capped_pdb1, capped_pdb2, atom1, atom2,
                        bond_length=None, output=None, skip_reposition=False):
     """
     Combine two capped single-residue PDBs into one model compound.
@@ -516,9 +516,9 @@ def _frozen_indices(atoms):
     return frozen
 
 
-def write_react_com(combined_pdb, com_path, charge, mult,
-                    nproc=NPROC_DEFAULT, mem=MEM_DEFAULT,
-                    route=_REACT_ROUTE_DEFAULT, freeze_backbone=True):
+def write_bond_com(combined_pdb, com_path, charge, mult,
+                   nproc=NPROC_DEFAULT, mem=MEM_DEFAULT,
+                   route=_BOND_ROUTE_DEFAULT, freeze_backbone=True):
     """
     Write a geometry-optimisation .com for the combined two-residue system.
 
@@ -538,9 +538,9 @@ def write_react_com(combined_pdb, com_path, charge, mult,
         route = re.sub(r'\bopt\(modredundant\)', 'opt', route, flags=re.IGNORECASE)
 
     base  = Path(combined_pdb).stem
-    title = (f"{base}  reaction complex backbone-frozen optimisation"
+    title = (f"{base}  covalent bond complex backbone-frozen optimisation"
              if freeze_backbone else
-             f"{base}  reaction complex full optimisation")
+             f"{base}  covalent bond complex full optimisation")
     header    = [f"%nprocshared={nproc}", f"%mem={mem}", route]
     atoms_xyz = [(_elem(a['name']), a['x'], a['y'], a['z']) for a in atoms]
     _write_gjf(com_path, header, title, charge, mult, atoms_xyz)
@@ -559,7 +559,7 @@ def write_react_com(combined_pdb, com_path, charge, mult,
 
 # -- RESP classification -------------------------------------------------------
 
-def _classify_react(atoms, position1='middle', position2='middle'):
+def _classify_bond(atoms, position1='middle', position2='middle'):
     """
     Classify every atom in the combined two-residue system.
 
@@ -622,11 +622,11 @@ def _classify_react(atoms, position1='middle', position2='middle'):
 
 # -- RESP input files ----------------------------------------------------------
 
-def write_react_resp_in(combined_pdb, charge, resname1, resname2, output,
-                         position1='middle', position2='middle'):
+def write_bond_resp_in(combined_pdb, charge, resname1, resname2, output,
+                       position1='middle', position2='middle'):
     """Write RESP control file (resp.in) for the combined two-residue system."""
     atoms  = parse_pdb(combined_pdb)
-    groups = _classify_react(atoms, position1, position2)
+    groups = _classify_bond(atoms, position1, position2)
     equiv  = _find_equiv(atoms, groups)
 
     natoms = len(atoms)
@@ -654,10 +654,10 @@ def write_react_resp_in(combined_pdb, charge, resname1, resname2, output,
     print(f"  resp.in  : {output}  ({natoms} atoms, {n_sc} sidechain free)")
 
 
-def write_react_resp_qin(combined_pdb, output, position1='middle', position2='middle'):
+def write_bond_resp_qin(combined_pdb, output, position1='middle', position2='middle'):
     """Write initial charges file (resp.qin) for the combined two-residue system."""
     atoms  = parse_pdb(combined_pdb)
-    groups = _classify_react(atoms, position1, position2)
+    groups = _classify_bond(atoms, position1, position2)
 
     def _ha_charges(resseq):
         n  = sum(1 for i, g in enumerate(groups)
@@ -695,7 +695,7 @@ def write_react_resp_qin(combined_pdb, output, position1='middle', position2='mi
 
 # -- MC files ------------------------------------------------------------------
 
-def write_react_mc(combined_pdb, target_resseq, charge, output, position='middle'):
+def write_bond_mc(combined_pdb, target_resseq, charge, output, position='middle'):
     """
     Write prepgen .mc file for one residue in the combined system.
 
@@ -759,7 +759,7 @@ def _restore_prepin_names(prepin_path, rename_map):
 
 # -- AMBER pipeline ------------------------------------------------------------
 
-def run_react_amber_pipeline(hf_log, resname1, resname2, total_charge,
+def run_bond_amber_pipeline(hf_log, resname1, resname2, total_charge,
                               mc_file1, mc_file2, workdir='.',
                               atom_type='amber', forcefield='ff14SB',
                               combined_pdb=None, rename_map=None,
@@ -786,7 +786,7 @@ def run_react_amber_pipeline(hf_log, resname1, resname2, total_charge,
     mc_file2 = str(Path(mc_file2).resolve())
     wd       = str(Path(workdir).resolve())
 
-    base        = f"{resname1}_{resname2}_react"
+    base        = f"{resname1}_{resname2}_bond"
     ac_file     = f"{base}.ac"
     gaff_frcmod = f"{base}_gaff.frcmod"
     ff_frcmod   = f"{base}_{forcefield}.frcmod" if forcefield else None

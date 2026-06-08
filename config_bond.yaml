@@ -1,4 +1,4 @@
-# CRAFT reaction configuration reference
+# CRAFT bond configuration reference
 #
 # Copy this file, fill in the values for your two residues, and save it as
 # config.yaml in your working directory.  Use this template when parameterizing
@@ -14,25 +14,25 @@
 #     craft-run --config config.yaml
 #
 #   Phase 2b (local, after opt log arrives from HPC):
-#     craft-hf-input <r1>_<r2>/<r1>_<r2>_react_opt.log \
+#     craft-hf-input <r1>_<r2>/<r1>_<r2>_bond_opt.log \
 #                    --charge <total> --config config.yaml
 #
 #   Phase 3 (local, after HF log arrives from HPC):
-#     craft-amber <r1>_<r2>/<r1>_<r2>_react_hf.log --config config.yaml
+#     craft-amber <r1>_<r2>/<r1>_<r2>_bond_hf.log --config config.yaml
 #
 #   Single SLURM job (full pipeline):
 #     craft-slurm --config config.yaml
-#     cd <r1>_<r2> && sbatch <r1>_<r2>_react_craft.sh
+#     cd <r1>_<r2> && sbatch <r1>_<r2>_bond_craft.sh
 #
 # -- Output layout -------------------------------------------------------------
 #
 #   <resname1>_<resname2>/
-#     <r1>_<r2>_react_combined.pdb     combined model compound (4 cap groups)
-#     <r1>_<r2>_react_opt.com          frozen-backbone Gaussian opt input
+#     <r1>_<r2>_bond_combined.pdb     combined model compound (4 cap groups)
+#     <r1>_<r2>_bond_opt.com          frozen-backbone Gaussian opt input
 #     resp.in, resp.qin, rename_map.json
-#     <r1>_<r2>_react.ac
-#     <r1>_<r2>_react_gaff.frcmod      shared for both residues
-#     <r1>_<r2>_react_ff14SB.frcmod    shared for both residues
+#     <r1>_<r2>_bond.ac
+#     <r1>_<r2>_bond_gaff.frcmod      shared for both residues
+#     <r1>_<r2>_bond_ff14SB.frcmod    shared for both residues
 #     <resname1>/
 #       <resname1>_capped.pdb, <resname1>.mc, <resname1>.prepin
 #     <resname2>/
@@ -41,21 +41,21 @@
 # -- Residue 1 -----------------------------------------------------------------
 residue1:
   input_pdb: RES1/RES1.pdb   # raw (uncapped) single-residue PDB; optional if
-                             # reaction.combined_pdb is set (names auto-detected)
+                             # bond.combined_pdb is set (names auto-detected)
   charge: 0                  # formal charge of this residue in the bonded state
   position: middle           # middle | cterm | nterm
 
 # -- Residue 2 -----------------------------------------------------------------
 residue2:
   input_pdb: RES2/RES2.pdb   # raw (uncapped) single-residue PDB; optional if
-                             # reaction.combined_pdb is set (names auto-detected)
+                             # bond.combined_pdb is set (names auto-detected)
   charge: 0                  # formal charge of this residue in the bonded state
   position: middle           # middle | cterm | nterm
                              # total QM charge = residue1.charge + residue2.charge
                              # each value is written to that residue's .mc CHARGE field
 
-# -- Reaction ------------------------------------------------------------------
-reaction:
+# -- Bond ----------------------------------------------------------------------
+bond:
   atom1: SG                  # reactive atom name in residue1
   atom2: NZ                  # reactive atom name in residue2
   bond_length: 1.5           # Å (optional; default 1.5); ignored if combined_pdb is set
@@ -90,7 +90,7 @@ amber:
 
 # -- SLURM (used by craft-slurm) ----------------------------------------------
 slurm:
-  job_name:               # leave blank -> <r1>_<r2>_react_craft
+  job_name:               # leave blank -> <r1>_<r2>_bond_craft
   output: param_%j.out
   error:  param_%j.err
   ntasks: 1

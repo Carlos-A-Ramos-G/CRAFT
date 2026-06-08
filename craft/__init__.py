@@ -5,6 +5,6 @@ from .mc import write_mc
 from .amber import run_amber_pipeline, remap_ac_atom_names
 from .slurm import write_slurm
 from .check import check_env
-from .react import (assemble_react_pdb, write_react_com,
-                    write_react_resp_in, write_react_resp_qin,
-                    write_react_mc, run_react_amber_pipeline)
+from .bond import (assemble_bond_pdb, write_bond_com,
+                   write_bond_resp_in, write_bond_resp_qin,
+                   write_bond_mc, run_bond_amber_pipeline)

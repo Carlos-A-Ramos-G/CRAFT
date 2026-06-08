@@ -3,13 +3,13 @@ craft.cli
 Console-script entry points registered in pyproject.toml.
 
 Each command detects from the config file whether to run the single-residue
-or two-residue reaction workflow:
+or two-residue bond workflow:
   - Single residue : config has a `residue` key
-  - Reaction       : config has `residue1`, `residue2`, and `reaction` keys
+  - Bond           : config has `residue1`, `residue2`, and `bond` keys
 
 Both invocation styles work after pip install .:
     craft-run --config config.yaml
-    craft-run --config config_react.yaml
+    craft-run --config config_bond.yaml
 """
 
 import sys
@@ -36,7 +36,7 @@ def _load_config(path):
             f"    craft-amber   <hf.log>  --config /path/to/config.yaml\n"
             f"    craft-slurm            --config /path/to/config.yaml\n"
             f"\n"
-            f"  Copy config.yaml (single residue) or config_react.yaml (two bonded\n"
+            f"  Copy config.yaml (single residue) or config_bond.yaml (two bonded\n"
             f"  residues) from the CRAFT repository into your working directory and\n"
             f"  fill in the values for your system."
         )
@@ -56,14 +56,14 @@ def _resnames_from_pdb(pdb_path):
     return seen
 
 
-def _resolve_react_resnames(cfg, workdir=None):
+def _resolve_bond_resnames(cfg, workdir=None):
     """
-    Return (resname1, resname2) from a reaction config.
+    Return (resname1, resname2) from a bond config.
 
     Resolution order:
-      1. reaction.combined_pdb  (takes priority; auto-detect residue names from file)
+      1. bond.combined_pdb  (takes priority; auto-detect residue names from file)
       2. residue1.input_pdb / residue2.input_pdb  (both must be set)
-      3. glob *_react_combined.pdb in workdir  (phase-3 fallback; requires workdir)
+      3. glob *_bond_combined.pdb in workdir  (phase-3 fallback; requires workdir)
 
     A warning is printed when both combined_pdb and input_pdb fields are set,
     since they are mutually exclusive — combined_pdb wins.
@@ -75,11 +75,11 @@ def _resolve_react_resnames(cfg, workdir=None):
     res2_cfg = cfg['residue2']
     pdb1 = res1_cfg.get('input_pdb')
     pdb2 = res2_cfg.get('input_pdb')
-    combined_pdb = cfg.get('reaction', {}).get('combined_pdb')
+    combined_pdb = cfg.get('bond', {}).get('combined_pdb')
 
     if combined_pdb:
         if pdb1 or pdb2:
-            print("  Warning: reaction.combined_pdb is set — "
+            print("  Warning: bond.combined_pdb is set — "
                   "residue1.input_pdb and residue2.input_pdb will be ignored.")
         rns = _resnames_from_pdb(combined_pdb)
         if len(rns) != 2:
@@ -94,7 +94,7 @@ def _resolve_react_resnames(cfg, workdir=None):
         return get_resname(pdb1), get_resname(pdb2)
 
     if workdir is not None:
-        candidates = list(Path(workdir).glob('*_react_combined.pdb'))
+        candidates = list(Path(workdir).glob('*_bond_combined.pdb'))
         if len(candidates) == 1:
             rns = _resnames_from_pdb(candidates[0])
             if len(rns) != 2:
@@ -106,7 +106,7 @@ def _resolve_react_resnames(cfg, workdir=None):
 
     sys.exit(
         "Error: residue1.input_pdb and residue2.input_pdb are required "
-        "when reaction.combined_pdb is not set."
+        "when bond.combined_pdb is not set."
     )
 
 
@@ -114,19 +114,19 @@ def _resolve_react_resnames(cfg, workdir=None):
 # craft-run   (Phase 1)
 # ---------------------------------------------------------------------------
 
-def _run_react(cfg, args):
-    """Phase 1 body for a two-residue reaction."""
+def _run_bond(cfg, args):
+    """Phase 1 body for a two-residue covalent bond."""
     import json
     from pathlib import Path
     from craft import cap
     from craft.gaussian import NPROC_DEFAULT, MEM_DEFAULT
-    from craft.react import (assemble_react_pdb, _prepare_user_combined_pdb,
-                              write_react_com, write_react_resp_in,
-                              write_react_resp_qin, write_react_mc)
+    from craft.bond import (assemble_bond_pdb, _prepare_user_combined_pdb,
+                             write_bond_com, write_bond_resp_in,
+                             write_bond_resp_qin, write_bond_mc)
 
     res1_cfg = cfg['residue1']
     res2_cfg = cfg['residue2']
-    rxn_cfg  = cfg['reaction']
+    rxn_cfg  = cfg['bond']
     g_cfg    = cfg.get('gaussian_opt') or cfg.get('gaussian') or {}
 
     pdb1      = res1_cfg.get('input_pdb')
@@ -142,14 +142,14 @@ def _run_react(cfg, args):
             sys.exit(f"Error: {label}.position must be 'middle', 'cterm', or 'nterm'; "
                      f"got {pos!r}")
 
-    resname1, resname2 = _resolve_react_resnames(cfg)
+    resname1, resname2 = _resolve_bond_resnames(cfg)
 
     atom1        = rxn_cfg['atom1']
     atom2        = rxn_cfg['atom2']
     bond_length  = rxn_cfg.get('bond_length', 1.5)
     total_charge = charge1 + charge2
 
-    base    = f"{resname1}_{resname2}_react"
+    base    = f"{resname1}_{resname2}_bond"
     workdir = Path(f"{resname1}_{resname2}")
     sub1    = workdir / resname1
     sub2    = workdir / resname2
@@ -189,7 +189,7 @@ def _run_react(cfg, args):
         print("=" * 60)
         print(f"Step 3 -- Assemble combined model  ({atom1}—{atom2}, {bond_length} Å)")
         print("=" * 60)
-        _, _, rename_map = assemble_react_pdb(
+        _, _, rename_map = assemble_bond_pdb(
             capped1, capped2, atom1, atom2, bond_length, combined_pdb)
 
     with open(rename_map_path, 'w') as f:
@@ -201,7 +201,7 @@ def _run_react(cfg, args):
     print("=" * 60)
     print("Step 4 -- Frozen-backbone Gaussian opt input")
     print("=" * 60)
-    write_react_com(
+    write_bond_com(
         combined_pdb, com_path,
         charge=total_charge, mult=1,
         nproc=g_cfg.get('nproc', NPROC_DEFAULT),
@@ -214,11 +214,11 @@ def _run_react(cfg, args):
     print("=" * 60)
     print("Step 5 -- MC and RESP input files")
     print("=" * 60)
-    write_react_mc(combined_pdb, 2, charge1, mc1_path, position1)
-    write_react_mc(combined_pdb, 5, charge2, mc2_path, position2)
-    write_react_resp_in(combined_pdb, total_charge, resname1, resname2,
-                        resp_in_path, position1, position2)
-    write_react_resp_qin(combined_pdb, resp_qin_path, position1, position2)
+    write_bond_mc(combined_pdb, 2, charge1, mc1_path, position1)
+    write_bond_mc(combined_pdb, 5, charge2, mc2_path, position2)
+    write_bond_resp_in(combined_pdb, total_charge, resname1, resname2,
+                       resp_in_path, position1, position2)
+    write_bond_resp_qin(combined_pdb, resp_qin_path, position1, position2)
 
     print()
     print(f"All Phase 1 outputs written to: {workdir}/")
@@ -239,7 +239,7 @@ def run():
 
     parser = argparse.ArgumentParser(
         description="Cap residue(s) and generate all pre-Gaussian inputs (Phase 1). "
-                    "Detects single-residue or reaction mode from the config file.",
+                    "Detects single-residue or bond mode from the config file.",
     )
     parser.add_argument('--config', default='config.yaml',
                         help='Config file (default: config.yaml)')
@@ -248,7 +248,7 @@ def run():
     cfg = _load_config(args.config)
 
     if 'residue1' in cfg:
-        _run_react(cfg, args)
+        _run_bond(cfg, args)
         return
 
     # -- single-residue path ---------------------------------------------------
@@ -386,11 +386,11 @@ def hf_input():
 # craft-amber   (Phase 3)
 # ---------------------------------------------------------------------------
 
-def _amber_react(cfg, args):
-    """Phase 3 body for a two-residue reaction."""
+def _amber_bond(cfg, args):
+    """Phase 3 body for a two-residue covalent bond."""
     import json
     from pathlib import Path
-    from craft.react import run_react_amber_pipeline
+    from craft.bond import run_bond_amber_pipeline
 
     res1_cfg = cfg['residue1']
     res2_cfg = cfg['residue2']
@@ -403,9 +403,9 @@ def _amber_react(cfg, args):
     workdir = (args.workdir if args.workdir != '.'
                else str(Path(args.log).resolve().parent))
 
-    resname1, resname2 = _resolve_react_resnames(cfg, workdir=workdir)
+    resname1, resname2 = _resolve_bond_resnames(cfg, workdir=workdir)
 
-    base         = f"{resname1}_{resname2}_react"
+    base         = f"{resname1}_{resname2}_bond"
     mc1_file     = str(Path(workdir) / resname1 / f"{resname1}.mc")
     mc2_file     = str(Path(workdir) / resname2 / f"{resname2}.mc")
     combined_pdb = str(Path(workdir) / f"{base}_combined.pdb")
@@ -428,7 +428,7 @@ def _amber_react(cfg, args):
               f"in {resname2}.prepin")
     print()
 
-    run_react_amber_pipeline(
+    run_bond_amber_pipeline(
         hf_log              = args.log,
         resname1            = resname1,
         resname2            = resname2,
@@ -451,7 +451,7 @@ def amber():
 
     parser = argparse.ArgumentParser(
         description="Run AMBER parameterization pipeline from Gaussian HF log. "
-                    "Detects single-residue or reaction mode from the config file.",
+                    "Detects single-residue or bond mode from the config file.",
     )
     parser.add_argument('log',            help='Gaussian HF/ESP log')
     parser.add_argument('--config',       default='config.yaml',
@@ -465,7 +465,7 @@ def amber():
     cfg = _load_config(args.config)
 
     if 'residue1' in cfg:
-        _amber_react(cfg, args)
+        _amber_bond(cfg, args)
         return
 
     # -- single-residue path ---------------------------------------------------
@@ -528,10 +528,10 @@ def amber():
 # craft-slurm   (SLURM script generator)
 # ---------------------------------------------------------------------------
 
-def _slurm_react(cfg, config_path):
-    """SLURM script generator body for a two-residue reaction."""
+def _slurm_bond(cfg, config_path):
+    """SLURM script generator body for a two-residue covalent bond."""
     from pathlib import Path
-    from craft.slurm import write_react_slurm
+    from craft.slurm import write_bond_slurm
 
     res1_cfg = cfg['residue1']
     res2_cfg = cfg['residue2']
@@ -540,18 +540,18 @@ def _slurm_react(cfg, config_path):
     charge2      = res2_cfg.get('charge', 0)
     total_charge = charge1 + charge2
 
-    resname1, resname2 = _resolve_react_resnames(cfg)
+    resname1, resname2 = _resolve_bond_resnames(cfg)
 
     proj_root = Path.cwd().resolve()
     workdir   = proj_root / f"{resname1}_{resname2}"
     workdir.mkdir(parents=True, exist_ok=True)
 
-    base   = f"{resname1}_{resname2}_react"
+    base   = f"{resname1}_{resname2}_bond"
     output = str(workdir / f"{base}_craft.sh")
 
-    write_react_slurm(cfg, output, proj_root, workdir,
-                      resname1, resname2, total_charge,
-                      config_path=config_path)
+    write_bond_slurm(cfg, output, proj_root, workdir,
+                     resname1, resname2, total_charge,
+                     config_path=config_path)
 
 
 def slurm():
@@ -561,7 +561,7 @@ def slurm():
 
     parser = argparse.ArgumentParser(
         description="Generate a SLURM batch script for the full pipeline. "
-                    "Detects single-residue or reaction mode from the config file.",
+                    "Detects single-residue or bond mode from the config file.",
     )
     parser.add_argument('--config', default='config.yaml',
                         help='Config file (default: config.yaml)')
@@ -571,7 +571,7 @@ def slurm():
     cfg = _load_config(args.config)
 
     if 'residue1' in cfg:
-        _slurm_react(cfg, config_path)
+        _slurm_bond(cfg, config_path)
         return
 
     # -- single-residue path ---------------------------------------------------

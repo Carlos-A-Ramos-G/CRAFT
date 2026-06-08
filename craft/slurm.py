@@ -150,10 +150,10 @@ def write_slurm(cfg, output, proj_root, workdir, position='middle', config_path=
 
 
 # ---------------------------------------------------------------------------
-# Reaction workflow SLURM template
+# Bond workflow SLURM template
 # ---------------------------------------------------------------------------
 
-_REACT_TEMPLATE = """\
+_BOND_TEMPLATE = """\
 #!/bin/bash
 {sbatch_directives}
 # -- Paths (baked in at generation time) --------------------------------------
@@ -196,10 +196,10 @@ echo "[$(date '+%H:%M:%S')] Done. Output files in $CRAFT_WD"
 """
 
 
-def write_react_slurm(cfg, output, proj_root, workdir,
-                      resname1, resname2, total_charge, config_path=None):
+def write_bond_slurm(cfg, output, proj_root, workdir,
+                     resname1, resname2, total_charge, config_path=None):
     """
-    Generate the SLURM batch script for the two-residue reaction workflow.
+    Generate the SLURM batch script for the two-residue covalent bond workflow.
 
     Parameters
     ----------
@@ -216,7 +216,7 @@ def write_react_slurm(cfg, output, proj_root, workdir,
     g_opt   = cfg.get('gaussian_opt', {}) or {}
     g_hf    = cfg.get('gaussian_hf',  {}) or {}
 
-    base     = f"{resname1}_{resname2}_react"
+    base     = f"{resname1}_{resname2}_bond"
     job_name = sl.get('job_name') or f"{base}_craft"
 
     opt_com = Path(g_opt.get('output_com') or f"{base}_opt.com").name
@@ -247,7 +247,7 @@ def write_react_slurm(cfg, output, proj_root, workdir,
     if config_path is None:
         config_path = Path(proj_root) / 'config.yaml'
 
-    script = _REACT_TEMPLATE.format(
+    script = _BOND_TEMPLATE.format(
         sbatch_directives='\n'.join(directives),
         module_lines=module_lines,
         conda_block=conda_block,
