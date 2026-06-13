@@ -1,39 +1,37 @@
-# CRAFT configuration reference
+# CRAFT configuration -- KM3 trimethyllysine, cterm position
 #
-# Copy this file, fill in the values for your residue, and save it as config.yaml
-# in your working directory. All outputs land in <resname>/<position>/,
-# e.g. KME3/middle/, KME3/cterm/, KME3/nterm/
+# Run from this directory (KME3/).  Outputs land in KM3/cterm/.
 #
 # -- If CRAFT is installed as a package (pip install .) ----------------------
 #
 #   Manually (step-by-step):
-#     craft-run --config config.yaml                    # Phase 1
-#     craft-hf-input KME3/middle/KME3_opt.log \
-#                    --config config.yaml               # Phase 2b
-#     craft-amber    KME3/middle/KME3_hf.log \
-#                    --config config.yaml               # Phase 3
+#     craft-run --config config_cterm.yaml                  # Phase 1
+#     craft-hf-input KM3/cterm/KM3_cterm_opt.log \
+#                    --config config_cterm.yaml             # Phase 2b
+#     craft-amber    KM3/cterm/KM3_cterm_hf.log \
+#                    --config config_cterm.yaml             # Phase 3
 #
 #   Single SLURM job (full pipeline):
-#     craft-slurm --config config.yaml    # generates KME3/middle/KME3_craft.sh
-#     cd KME3/middle && sbatch KME3_craft.sh
+#     craft-slurm --config config_cterm.yaml
+#     cd KM3/cterm && sbatch KM3_cterm_craft.sh
 #
 # -- If running directly from source (no install) ----------------------------
 #
 #   Manually (step-by-step):
-#     python run.py                                     # Phase 1
-#     python make_hf_input.py KME3/middle/KME3_opt.log  # Phase 2b
-#     python amber_pipeline.py KME3/middle/KME3_hf.log  # Phase 3
+#     python run.py                                              # Phase 1
+#     python make_hf_input.py KM3/cterm/KM3_cterm_opt.log      # Phase 2b
+#     python amber_pipeline.py KM3/cterm/KM3_cterm_hf.log      # Phase 3
 #
 #   Single SLURM job (full pipeline):
-#     python make_slurm.py                # generates KME3/middle/KME3_craft.sh
-#     cd KME3/middle && sbatch KME3_craft.sh
+#     python make_slurm.py            # generates KM3/cterm/KM3_cterm_craft.sh
+#     cd KM3/cterm && sbatch KM3_cterm_craft.sh
 
 # -- Residue -------------------------------------------------------------------
 residue:
-  input_pdb: YOUR_RESNAME/YOUR_RESNAME.pdb   # raw (uncapped) single-residue PDB
-  charge: 0                                  # net molecular charge (e.g. 1 for cationic)
-  multiplicity: 1                            # spin multiplicity (1 = singlet)
-  position: middle                           # middle | cterm | nterm
+  input_pdb: KME3.pdb            # raw (uncapped) single-residue PDB
+  charge: 0                      # net molecular charge (e.g. 1 for cationic)
+  multiplicity: 1                # spin multiplicity (1 = singlet)
+  position: cterm                # middle | cterm | nterm
 
 # -- Phase 1a: capping ---------------------------------------------------------
 cap:

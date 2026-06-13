@@ -40,27 +40,25 @@
 
 # -- Residue 1 -----------------------------------------------------------------
 residue1:
-  input_pdb: RES1/RES1.pdb   # raw (uncapped) single-residue PDB; optional if
+  input_pdb: CYA.pdb         # raw (uncapped) single-residue PDB; optional if
                              # bond.combined_pdb is set (names auto-detected)
   charge: 0                  # formal charge of this residue in the bonded state
   position: middle           # middle | cterm | nterm
-                             # must match the actual capping in combined_pdb if provided
 
 # -- Residue 2 -----------------------------------------------------------------
 residue2:
-  input_pdb: RES2/RES2.pdb   # raw (uncapped) single-residue PDB; optional if
+  input_pdb: ASA.pdb         # raw (uncapped) single-residue PDB; optional if
                              # bond.combined_pdb is set (names auto-detected)
   charge: 0                  # formal charge of this residue in the bonded state
   position: middle           # middle | cterm | nterm
-                             # must match the actual capping in combined_pdb if provided
                              # total QM charge = residue1.charge + residue2.charge
                              # each value is written to that residue's .mc CHARGE field
 
 # -- Bond ----------------------------------------------------------------------
 bond:
-  atom1: SG                  # reactive atom name in residue1; ignored if combined_pdb is set
-  atom2: CG                  # reactive atom name in residue2; ignored if combined_pdb is set
-  bond_length: 1.5           # Å (optional; default 1.5); ignored if combined_pdb is set
+  atom1: SG                  # reactive atom name in residue1
+  atom2: CG                  # reactive atom name in residue2
+  bond_length:               # Å (optional; default 1.5); ignored if combined_pdb is set
   combined_pdb:              # optional: path to a pre-capped combined PDB that
                              # already contains both residues capped with ACE/NME
                              # (6 groups with resSeq 1-6: ACE/res1/NME/ACE/res2/NME).

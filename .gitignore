@@ -56,6 +56,9 @@ existing_examples/
 # Local test configuration (contains site-specific paths and credentials)
 tests_config.yaml
 
+# Jupyter
+.ipynb_checkpoints/
+
 # macOS
 .DS_Store
 .AppleDouble
@@ -69,6 +72,18 @@ message.txt
 algo.sh
 workflow_diagram.svg
 
-# Un-ignore everything inside the KME3 worked example
-!KME3/
-!KME3/**
+# Un-ignore inputs and Gaussian logs in the single_AA worked example
+!single_AA/
+!single_AA/KME3.pdb
+!single_AA/config*.yaml
+!single_AA/KM3/
+!single_AA/KM3/middle/
+!single_AA/KM3/cterm/
+!single_AA/KM3/nterm/
+!single_AA/KM3/**/*_opt.log
+!single_AA/KM3/**/*_hf.log
+
+# Un-ignore inputs in the two_bonded_AA worked example
+!two_bonded_AA/
+!two_bonded_AA/*.pdb
+!two_bonded_AA/config*.yaml

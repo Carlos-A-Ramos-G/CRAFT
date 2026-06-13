@@ -144,8 +144,8 @@ def _run_bond(cfg, args):
 
     resname1, resname2 = _resolve_bond_resnames(cfg)
 
-    atom1        = rxn_cfg['atom1']
-    atom2        = rxn_cfg['atom2']
+    atom1        = rxn_cfg.get('atom1')
+    atom2        = rxn_cfg.get('atom2')
     bond_length  = rxn_cfg.get('bond_length', 1.5)
     total_charge = charge1 + charge2
 
@@ -174,6 +174,9 @@ def _run_bond(cfg, args):
         rename_map = _prepare_user_combined_pdb(combined_input, combined_pdb,
                                                 position1, position2)
     else:
+        if not atom1 or not atom2:
+            sys.exit("Error: bond.atom1 and bond.atom2 are required when "
+                     "bond.combined_pdb is not set.")
         print("=" * 60)
         print(f"Step 1 -- Cap {resname1}  [{position1}]")
         print("=" * 60)
