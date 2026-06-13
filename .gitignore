@@ -10,6 +10,7 @@ dist/
 
 # Generated pipeline files
 *_capped.pdb
+*_combined.pdb
 *_opt.com
 *_opt.log
 *_hf.com
@@ -26,6 +27,7 @@ resp.chg
 *.prepin
 *.frcmod
 *.chk
+rename_map.json
 
 # SLURM
 *.out
@@ -49,10 +51,6 @@ punch
 fort.*
 scratch/
 
-# Example / reference directories
-example_to_replicate/
-existing_examples/
-
 # Local test configuration (contains site-specific paths and credentials)
 tests_config.yaml
 
@@ -69,21 +67,10 @@ tests_config.yaml
 message.txt
 
 # Personal / local files
-algo.sh
 workflow_diagram.svg
 
-# Un-ignore inputs and Gaussian logs in the single_AA worked example
-!single_AA/
-!single_AA/KME3.pdb
-!single_AA/config*.yaml
-!single_AA/KM3/
-!single_AA/KM3/middle/
-!single_AA/KM3/cterm/
-!single_AA/KM3/nterm/
+# Un-ignore Gaussian logs in worked examples
 !single_AA/KM3/**/*_opt.log
 !single_AA/KM3/**/*_hf.log
-
-# Un-ignore inputs in the two_bonded_AA worked example
-!two_bonded_AA/
-!two_bonded_AA/*.pdb
-!two_bonded_AA/config*.yaml
+!two_bonded_AA/CYA_ASA/*_opt.log
+!two_bonded_AA/CYA_ASA/*_hf.log
